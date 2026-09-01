@@ -24,6 +24,7 @@ import logging
 import gettext
 import io
 import subprocess
+import ast
 from pathlib import Path
 
 __all__ = (
@@ -44,6 +45,25 @@ translation_dict = None
 logger = logging.getLogger(__name__)
 
 
+def get_locale_aliases(lang: str) -> list[str]:
+    """Return the exact locale plus Blender-normalized aliases.
+
+    Blender sometimes resolves UI languages to the two-letter form (for example,
+    es_ES -> es), while the project stores full locale names in the .po files.
+    Register all aliases so the active UI language always finds a match.
+    """
+    aliases = {lang}
+    if "_" in lang:
+        base, region = lang.split("_", 1)
+        aliases.add(base)
+        aliases.add(f"{base}-{region}")
+    if "-" in lang:
+        base, region = lang.split("-", 1)
+        aliases.add(base)
+        aliases.add(f"{base}_{region}")
+    return sorted(aliases)
+
+
 class Utf8GNUTranslations(gettext.GNUTranslations):
     """GNUTranslations that falls back to UTF-8 when no charset is given."""
 
@@ -56,15 +76,36 @@ class Utf8GNUTranslations(gettext.GNUTranslations):
             gettext.GNUTranslations._parse(self, fp)
 
 
-def load_po_file(path: Path) -> dict:
+def _po_unquote(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return ""
+    try:
+        return ast.literal_eval(value)
+    except (SyntaxError, ValueError):
+        if value.startswith('"') and value.endswith('"'):
+            return value[1:-1].encode("utf-8").decode("unicode_escape")
+        return value.strip('"')
+
+
+def load_po_file(path: Path) -> dict[tuple[str | None, str], str]:
     """Load translations from a PO file.
 
-    The function first attempts to compile the file with the external
-    ``msgfmt`` command.  If that fails (e.g. the command is not available), a
-    very small Python parser is used as a fallback so translations remain
-    available without external dependencies.
+    Blender's translation registry expects a dictionary whose keys are tuples of
+    (msgctxt, msgid). The default context is represented by None, not "*".
     """
-    entries: dict[tuple[str, str], str] = {}
+    entries: dict[tuple[str | None, str], str] = {}
+
+    def normalize_context(msgctxt: str | None) -> str | None:
+        if msgctxt in (None, "", "*"):
+            return None
+        return msgctxt
+
+    def flush_entry(msgctxt: str | None, msgid: str | None, msgstr: str | None):
+        if msgid in (None, "") or msgstr is None:
+            return
+        entries[(normalize_context(msgctxt), msgid)] = msgstr
+
     try:
         result = subprocess.run(
             ["msgfmt", "-o", "-", str(path)],
@@ -76,35 +117,61 @@ def load_po_file(path: Path) -> dict:
         logger.debug(f"msgfmt failed for {path}: {exc}; using fallback parser")
         msgctxt = None
         msgid = None
+        msgstr = None
+
         with path.open(encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    flush_entry(msgctxt, msgid, msgstr)
+                    msgctxt = None
+                    msgid = None
+                    msgstr = None
+                    continue
+                if line.startswith("#"):
                     continue
                 if line.startswith("msgctxt"):
-                    msgctxt = line.split(" ", 1)[1].strip().strip('"')
-                elif line.startswith("msgid"):
-                    msgid = line.split(" ", 1)[1].strip().strip('"')
-                elif line.startswith("msgstr"):
-                    msgstr = line.split(" ", 1)[1].strip().strip('"')
-                    if msgid:
-                        entries[(msgctxt or "*", msgid)] = msgstr
+                    if msgid is not None or msgstr is not None:
+                        flush_entry(msgctxt, msgid, msgstr)
                         msgctxt = None
                         msgid = None
+                        msgstr = None
+                    msgctxt = _po_unquote(line[len("msgctxt"):].strip()) or None
+                elif line.startswith("msgid"):
+                    if msgid is not None or msgstr is not None:
+                        flush_entry(msgctxt, msgid, msgstr)
+                        msgctxt = None
+                        msgid = None
+                        msgstr = None
+                    msgid = _po_unquote(line[len("msgid"):].strip())
+                elif line.startswith("msgstr"):
+                    msgstr = _po_unquote(line[len("msgstr"):].strip())
+                elif line.startswith('"'):
+                    value = _po_unquote(line)
+                    if msgstr is not None:
+                        msgstr += value
+                    elif msgid is not None:
+                        msgid += value
+                    elif msgctxt is not None:
+                        msgctxt += value
+                else:
+                    continue
+
+        flush_entry(msgctxt, msgid, msgstr)
         return entries
-    else:
-        trans = Utf8GNUTranslations(io.BytesIO(result.stdout))
-        for key, msgstr in trans._catalog.items():
-            if not key:
-                continue
-            if isinstance(key, tuple):
-                msgctxt, msgid = key
-            elif "\x04" in key:
-                msgctxt, msgid = key.split("\x04", 1)
-            else:
-                msgctxt, msgid = "*", key
-            entries[(msgctxt or "*", msgid)] = msgstr
-        return entries
+
+    trans = Utf8GNUTranslations(io.BytesIO(result.stdout))
+    for key, msgstr in trans._catalog.items():
+        if not key:
+            continue
+        if isinstance(key, tuple):
+            msgctxt, msgid = key
+        elif "\x04" in key:
+            msgctxt, msgid = key.split("\x04", 1)
+        else:
+            msgctxt, msgid = None, key
+        entries[(normalize_context(msgctxt), msgid)] = msgstr
+    return entries
 
 def init():
     global modules
@@ -131,10 +198,13 @@ def register():
     for po_path in locale_dir.glob("*.po"):
         lang = po_path.stem
         try:
-            translation_dict[lang] = load_po_file(po_path)
+            loaded = load_po_file(po_path)
+            for alias in get_locale_aliases(lang):
+                translation_dict[alias] = loaded
         except Exception as exc:
             logger.warning(f"Failed to load translation for {lang}: {exc}")
 
+    # Blender expects a mapping of language -> {(msgctxt, msgid): msgstr}
     try:
         bpy.app.translations.register(__name__, translation_dict)
         logger.info("Translation registration successful")

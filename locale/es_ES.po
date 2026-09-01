@@ -1,0 +1,515 @@
+msgid ""
+msgstr ""
+"Language: es_ES\n"
+
+msgctxt "*"
+msgid "STEP1:Auto Vertex Color Settings:"
+msgstr "PASO1: Configuración automática de color de vértices:"
+
+msgctxt "*"
+msgid "Erase Sharp Edges"
+msgstr "Eliminar aristas marcadas"
+
+msgctxt "*"
+msgid "Separate Paint Vertex Colors"
+msgstr "Separar colores de vértice pintados"
+
+msgctxt "*"
+msgid "Node Settings:"
+msgstr "Configuración de nodos:"
+
+msgctxt "*"
+msgid "STEP3:Generate Sample Node"
+msgstr "PASO3: Generar nodo de muestra"
+
+msgctxt "*"
+msgid "Generate Sample Node"
+msgstr "Generar nodo de muestra"
+
+msgctxt "*"
+msgid "Erase outline's sharp edges"
+msgstr "Eliminar aristas marcadas para generar contorno"
+
+msgctxt "*"
+msgid "Outline's angle threshold."
+msgstr "Ángulo límite para generar contorno"
+
+msgctxt "*"
+msgid "Active object is not a mesh."
+msgstr "El objeto activo no es una malla."
+
+msgctxt "*"
+msgid "Join triangles into quads"
+msgstr "Unir caras triangulares en cuadradas"
+
+msgctxt "*"
+msgid "STEP4:Manual Vertex Color Settings:"
+msgstr "PASO4: Configuración manual de color de vértices:"
+
+msgctxt "*"
+msgid "Paint Vertex Color"
+msgstr "Pintar color de vértices"
+
+msgctxt "*"
+msgid "Vertex Color Type"
+msgstr "Tipo de color de vértices"
+
+msgctxt "*"
+msgid "Mecha Color"
+msgstr "Color mecha"
+
+msgctxt "*"
+msgid "Bone Color"
+msgstr "Color hueso"
+
+msgctxt "*"
+msgid "Mask Color(paint to erase lines)"
+msgstr "Color máscara (pintar para borrar líneas)"
+
+msgctxt "*"
+msgid "Lines vanish where painted. The brightness does not matter"
+msgstr "Las líneas desaparecen donde se pinta. El brillo no importa"
+
+msgctxt "*"
+msgid "Line Color(line darkness)"
+msgstr "Color de línea (intensidad)"
+
+msgctxt "*"
+msgid "Sets how dark the line is. White makes it invisible"
+msgstr "Define qué tan oscura es la línea. Blanco la vuelve invisible"
+
+msgctxt "*"
+msgid "Add the material ID"
+msgstr "Agregar ID de material"
+
+msgctxt "*"
+msgid "Include Anti-Aliasing Node"
+msgstr "Incluir nodo de anti‑aliasing"
+
+msgctxt "*"
+msgid "Edge Angle"
+msgstr "Ángulo de arista"
+
+msgctxt "*"
+msgid "Select a mesh."
+msgstr "Seleccione una malla."
+
+msgctxt "*"
+msgid "Select Node Type"
+msgstr "Seleccionar tipo de nodo"
+
+msgctxt "*"
+msgid "Test Node"
+msgstr "Nodo de prueba"
+
+msgctxt "*"
+msgid "Pro Node"
+msgstr "Nodo profesional"
+
+msgctxt "*"
+msgid "Enable Compositor Preview"
+msgstr "Habilitar vista previa del compositor"
+
+msgctxt "*"
+msgid "STEP2:AOV Settings:"
+msgstr "PASO2: Configuración de AOV:"
+
+msgctxt "*"
+msgid "Generate AOV Node"
+msgstr "Generar nodo AOV"
+
+msgctxt "*"
+msgid "AOV Bone Color"
+msgstr "AOV hueso"
+
+msgctxt "*"
+msgid "AOV Generate Color"
+msgstr "AOV tela u otros"
+
+msgctxt "*"
+msgid "AOV Mask Color(paint to erase lines)"
+msgstr "AOV máscara (pintar para borrar líneas)"
+
+msgctxt "*"
+msgid "AOV Line Color(line darkness)"
+msgstr "AOV intensidad de línea"
+
+msgctxt "*"
+msgid "AOV Material Boundary Color"
+msgstr "AOV límite de material"
+
+msgctxt "*"
+msgid "Execute from STEP1"
+msgstr "Ejecutar desde PASO1"
+
+msgctxt "*"
+msgid "Execute from STEP2"
+msgstr "Ejecutar desde PASO2"
+
+msgctxt "*"
+msgid "Export Group to Python"
+msgstr "Exportar grupo a Python"
+
+msgctxt "*"
+msgid "Import Group from Python"
+msgstr "Importar grupo desde Python"
+
+msgctxt "*"
+msgid "Export Shader Group to Python"
+msgstr "Exportar grupo de shader a Python"
+
+msgctxt "*"
+msgid "Import Shader Group from Python"
+msgstr "Importar grupo de shader desde Python"
+
+msgctxt "*"
+msgid "Node Tools"
+msgstr "Herramientas de nodos"
+
+msgctxt "*"
+msgid "Export/Import Python"
+msgstr "Exportar/Importar Python"
+
+msgctxt "*"
+msgid "Export/Import Shader Python"
+msgstr "Exportar/Importar shader en Python"
+
+msgctxt "*"
+msgid "Not in a CompositorNodeTree."
+msgstr "No está en un CompositorNodeTree."
+
+msgctxt "*"
+msgid "Not in a ShaderNodeTree."
+msgstr "No está en un ShaderNodeTree."
+
+msgctxt "*"
+msgid "Select exactly one GROUP node."
+msgstr "Seleccione exactamente un nodo de GRUPO."
+
+msgctxt "*"
+msgid "Nested / empty group not supported."
+msgstr "Grupos vacíos o anidados no son compatibles."
+
+msgctxt "*"
+msgid "create_node_tree_*() not found."
+msgstr "create_node_tree_*() no encontrado."
+
+msgctxt "*"
+msgid "Exported to"
+msgstr "Exportado a"
+
+msgctxt "*"
+msgid "Imported as"
+msgstr "Importado como"
+
+msgctxt "*"
+msgid "Vertex-color options:"
+msgstr "Opciones de color de vértices:"
+
+msgctxt "*"
+msgid "Color noise scale"
+msgstr "Escala de ruido de color"
+
+msgctxt "*"
+msgid "Min color distance"
+msgstr "Distancia mínima de color"
+
+msgctxt "*"
+msgid "Max color retries"
+msgstr "Máximo de reintentos de color"
+
+msgctxt "*"
+msgid "Half mask color"
+msgstr "Color de máscara parcial"
+
+msgctxt "*"
+msgid "Half Fill"
+msgstr "Relleno parcial"
+
+msgctxt "*"
+msgid "Bone color grouping"
+msgstr "Agrupación de nombres de hueso"
+
+msgctxt "*"
+msgid "How to group bone names when coloring bone_color"
+msgstr "Cómo agrupar nombres de hueso al colorear bone_color"
+
+msgctxt "*"
+msgid "Exact"
+msgstr "Coincidencia exacta"
+
+msgctxt "*"
+msgid "Use the bone/vertex-group name as-is"
+msgstr "Usar el nombre del hueso/grupo tal cual"
+
+msgctxt "*"
+msgid "Basename (.###)"
+msgstr "Nombre base (.###)"
+
+msgctxt "*"
+msgid "Treat suffix like .001 as the same"
+msgstr "Tratar sufijos como .001 como iguales"
+
+msgctxt "*"
+msgid "Strip trailing digits"
+msgstr "Eliminar dígitos finales"
+
+msgctxt "*"
+msgid "Ignore trailing digits even without dot"
+msgstr "Ignorar dígitos finales incluso sin punto"
+
+msgctxt "*"
+msgid "Bone grouping"
+msgstr "Agrupación de huesos"
+
+msgctxt "*"
+msgid "Random seed each run"
+msgstr "Semilla aleatoria en cada ejecución"
+
+msgctxt "*"
+msgid "Seed"
+msgstr "Semilla"
+
+msgctxt "*"
+msgid "Assign a new random color seed"
+msgstr "Asignar nueva semilla aleatoria de color"
+
+msgctxt "*"
+msgid "STEP1: Auto Vertex Color"
+msgstr "PASO1: Color automático de vértices"
+
+msgctxt "*"
+msgid "STEP2: AOV"
+msgstr "PASO2: AOV"
+
+msgctxt "*"
+msgid "STEP3: Node Generation"
+msgstr "PASO3: Generación de nodos"
+
+msgctxt "*"
+msgid "STEP4: Manual Vertex Color"
+msgstr "PASO4: Color manual de vértices"
+
+msgctxt "*"
+msgid "Camera Batch Render"
+msgstr "Renderizado por lotes de cámaras"
+
+msgctxt "*"
+msgid "STEP5: Camera Batch Render"
+msgstr "PASO5: Renderizado por lotes de cámaras"
+
+msgctxt "*"
+msgid "STEP0: Full Auto"
+msgstr "PASO0: Automático completo"
+
+msgctxt "*"
+msgid "Auto setup (STEP1-3)"
+msgstr "Configuración automática (PASO1–3)"
+
+msgctxt "*"
+msgid "Recommended settings for this scene"
+msgstr "Configuración recomendada para esta escena"
+
+msgctxt "*"
+msgid "No mesh objects"
+msgstr "No hay objetos de malla"
+
+msgctxt "*"
+msgid "Line strength per channel:"
+msgstr "Intensidad de línea por canal:"
+
+msgctxt "*"
+msgid "Depth"
+msgstr "Profundidad"
+
+msgctxt "*"
+msgid "Mecha"
+msgstr "Mecha"
+
+msgctxt "*"
+msgid "Bone"
+msgstr "Hueso"
+
+msgctxt "*"
+msgid "Material"
+msgstr "Límite de material"
+
+msgctxt "*"
+msgid "Generate"
+msgstr "Tela u otros"
+
+msgctxt "*"
+msgid "White material preview"
+msgstr "Vista previa con material blanco"
+
+msgctxt "*"
+msgid "2x supersampling (thin lines)"
+msgstr "Supermuestreo 2x → reducción al 50% (líneas finas)"
+
+msgctxt "*"
+msgid "Keep glass transparent"
+msgstr "Mantener vidrio transparente"
+
+msgctxt "*"
+msgid "Merge small islands"
+msgstr "Unir islas pequeñas"
+
+msgctxt "*"
+msgid "Part tint"
+msgstr "Tono por partes"
+
+msgctxt "*"
+msgid "Bone AOV by rig detection"
+msgstr "AOV de hueso por detección de rig"
+
+msgctxt "*"
+msgid "Anti-aliasing"
+msgstr "Anti‑aliasing"
+
+msgctxt "*"
+msgid "BLEND to HASHED (keep glass)"
+msgstr "Convertir BLEND a HASHED (excepto vidrio)"
+
+msgctxt "*"
+msgid "Detect painted AOVs"
+msgstr "Detectar canales AOV ya pintados"
+
+msgctxt "*"
+msgid "Auto AOVs from scene"
+msgstr "Configurar AOV automáticamente desde la escena"
+
+msgctxt "*"
+msgid "Island split:"
+msgstr "División de islas:"
+
+msgctxt "*"
+msgid "Bone options:"
+msgstr "Opciones de hueso:"
+
+msgctxt "*"
+msgid "Color seed:"
+msgstr "Semilla de color:"
+
+msgctxt "*"
+msgid "Auto edge angle"
+msgstr "Ángulo de arista automático"
+
+msgctxt "*"
+msgid "Seam/material boundaries"
+msgstr "Dividir por costuras/límites de material"
+
+msgctxt "*"
+msgid "Min island area %"
+msgstr "Área mínima de isla %"
+
+msgctxt "*"
+msgid "Hard boundary bones"
+msgstr "Huesos de límite rígido"
+
+msgctxt "*"
+msgid "Part tint (mecha color)"
+msgstr "Tono por partes (color mecha)"
+
+msgctxt "*"
+msgid "Line sensitivity"
+msgstr "Sensibilidad de línea"
+
+msgctxt "*"
+msgid "File Output"
+msgstr "Salida de archivo"
+
+msgctxt "*"
+msgid "Enable File Output"
+msgstr "Habilitar salida de archivo"
+
+msgctxt "*"
+msgid "Output path"
+msgstr "Carpeta de salida"
+
+msgctxt "*"
+msgid "Render checked cameras"
+msgstr "Renderizar cámaras seleccionadas"
+
+msgctxt "*"
+msgid "No cameras in scene"
+msgstr "No hay cámaras en la escena"
+
+msgctxt "*"
+msgid "Render this camera"
+msgstr "Renderizar esta cámara"
+
+msgctxt "*"
+msgid "Limited support on this Blender"
+msgstr "Compatibilidad limitada en esta versión de Blender"
+
+msgctxt "*"
+msgid "Render with F12. Live preview needs 4.3+."
+msgstr "Renderice con F12. La vista previa requiere Blender 4.3+."
+
+msgctxt "*"
+msgid "Live preview needs Blender 4.3+"
+msgstr "La vista previa requiere Blender 4.3+"
+
+msgctxt "*"
+msgid "Live preview needs Blender 4.3+. Render with F12 instead."
+msgstr "La vista previa requiere Blender 4.3+. Use F12 para renderizar."
+
+msgctxt "*"
+msgid "Passes to write:"
+msgstr "Pasos a exportar:"
+
+msgctxt "*"
+msgid "light (diffuse)"
+msgstr "luz (difuso)"
+
+msgctxt "*"
+msgid "shadow"
+msgstr "sombra"
+
+msgctxt "*"
+msgid "No pass selected"
+msgstr "No se seleccionó ningún paso"
+
+msgctxt "*"
+msgid "Far crush relief:"
+msgstr "Alivio de aplastamiento en fondo:"
+
+msgctxt "*"
+msgid "Amount"
+msgstr "Intensidad"
+
+msgctxt "*"
+msgid "Radius (px)"
+msgstr "Radio (px)"
+
+msgctxt "*"
+msgid "Threshold"
+msgstr "Umbral"
+
+msgctxt "*"
+msgid "Created"
+msgstr "Creado"
+
+msgctxt "*"
+msgid "Updated"
+msgstr "Actualizado"
+
+msgctxt "*"
+msgid "Already up to date"
+msgstr "Ya está actualizado"
+
+msgctxt "*"
+msgid "materials"
+msgstr "Insertado en materiales"
+
+msgctxt "*"
+msgid "nodes"
+msgstr "Nodos"
+
+msgctxt "*"
+msgid "File output"
+msgstr "Salida de archivo"
+
+msgctxt "*"
+msgid "Far crush relief"
+msgstr "Alivio de aplastamiento en fondo"
