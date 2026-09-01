@@ -43,10 +43,6 @@ msgid "Join triangles into quads"
 msgstr "Join triangles into quads"
 
 msgctxt "*"
-msgid "This to Quads"
-msgstr "This to Quads"
-
-msgctxt "*"
 msgid "STEP4:Manual Vertex Color Settings:"
 msgstr "STEP4:Manual Vertex Color Settings:"
 
@@ -67,12 +63,20 @@ msgid "Bone Color"
 msgstr "Bone Color"
 
 msgctxt "*"
-msgid "Mask Color(White erases lines)"
-msgstr "Mask Color(White erases lines)"
+msgid "Mask Color(paint to erase lines)"
+msgstr "Mask Color(paint to erase lines)"
 
 msgctxt "*"
-msgid "Line Color"
-msgstr "Line Color"
+msgid "Lines vanish where painted. The brightness does not matter"
+msgstr "Lines vanish where painted. The brightness does not matter"
+
+msgctxt "*"
+msgid "Line Color(line darkness)"
+msgstr "Line Color(line darkness)"
+
+msgctxt "*"
+msgid "Sets how dark the line is. White makes it invisible"
+msgstr "Sets how dark the line is. White makes it invisible"
 
 msgctxt "*"
 msgid "Add the material ID"
@@ -123,12 +127,12 @@ msgid "AOV Generate Color"
 msgstr "AOV Generate Color"
 
 msgctxt "*"
-msgid "AOV Mask Color(White erases lines)"
-msgstr "AOV Mask Color(White erases lines)"
+msgid "AOV Mask Color(paint to erase lines)"
+msgstr "AOV Mask Color(paint to erase lines)"
 
 msgctxt "*"
-msgid "AOV Line Color"
-msgstr "AOV Line Color"
+msgid "AOV Line Color(line darkness)"
+msgstr "AOV Line Color(line darkness)"
 
 msgctxt "*"
 msgid "AOV Material Boundary Color"
@@ -270,7 +274,6 @@ msgctxt "*"
 msgid "Assign a new random color seed"
 msgstr "Assign a new random color seed"
 
-
 msgctxt "*"
 msgid "STEP1: Auto Vertex Color"
 msgstr "STEP1: Auto Vertex Color"
@@ -294,66 +297,6 @@ msgstr "Camera Batch Render"
 msgctxt "*"
 msgid "STEP5: Camera Batch Render"
 msgstr "STEP5: Camera Batch Render"
-
-msgctxt "*"
-msgid "Island split:"
-msgstr "Island split:"
-
-msgctxt "*"
-msgid "Bone options:"
-msgstr "Bone options:"
-
-msgctxt "*"
-msgid "Color seed:"
-msgstr "Color seed:"
-
-msgctxt "*"
-msgid "Auto edge angle"
-msgstr "Auto edge angle"
-
-msgctxt "*"
-msgid "Seam/material boundaries"
-msgstr "Seam/material boundaries"
-
-msgctxt "*"
-msgid "Min island area %"
-msgstr "Min island area %"
-
-msgctxt "*"
-msgid "Hard boundary bones"
-msgstr "Hard boundary bones"
-
-msgctxt "*"
-msgid "Part tint (mecha color)"
-msgstr "Part tint (mecha color)"
-
-msgctxt "*"
-msgid "Line sensitivity"
-msgstr "Line sensitivity"
-
-msgctxt "*"
-msgid "File Output"
-msgstr "File Output (line/color/light)"
-
-msgctxt "*"
-msgid "Enable File Output"
-msgstr "Enable File Output"
-
-msgctxt "*"
-msgid "Output path"
-msgstr "Output path"
-
-msgctxt "*"
-msgid "Render checked cameras"
-msgstr "Render checked cameras"
-
-msgctxt "*"
-msgid "No cameras in scene"
-msgstr "No cameras in scene"
-
-msgctxt "*"
-msgid "Render this camera"
-msgstr "Render this camera"
 
 msgctxt "*"
 msgid "STEP0: Full Auto"
@@ -400,6 +343,10 @@ msgid "White material preview"
 msgstr "White material preview"
 
 msgctxt "*"
+msgid "2x supersampling (thin lines)"
+msgstr "2x supersampling (thin lines)"
+
+msgctxt "*"
 msgid "Keep glass transparent"
 msgstr "Keep glass transparent"
 
@@ -432,5 +379,137 @@ msgid "Auto AOVs from scene"
 msgstr "Auto AOVs from scene"
 
 msgctxt "*"
-msgid "2x supersampling (thin lines)"
-msgstr "2x supersampling (thin lines)"
+msgid "Island split:"
+msgstr "Island split:"
+
+msgctxt "*"
+msgid "Bone options:"
+msgstr "Bone options:"
+
+msgctxt "*"
+msgid "Color seed:"
+msgstr "Color seed:"
+
+msgctxt "*"
+msgid "Auto edge angle"
+msgstr "Auto edge angle"
+
+msgctxt "*"
+msgid "Seam/material boundaries"
+msgstr "Seam/material boundaries"
+
+msgctxt "*"
+msgid "Min island area %"
+msgstr "Min island area %"
+
+msgctxt "*"
+msgid "Hard boundary bones"
+msgstr "Hard boundary bones"
+
+msgctxt "*"
+msgid "Part tint (mecha color)"
+msgstr "Part tint (mecha color)"
+
+msgctxt "*"
+msgid "Line sensitivity"
+msgstr "Line sensitivity"
+
+msgctxt "*"
+msgid "File Output"
+msgstr "File Output"
+
+msgctxt "*"
+msgid "Enable File Output"
+msgstr "Enable File Output"
+
+msgctxt "*"
+msgid "Output path"
+msgstr "Output path"
+
+msgctxt "*"
+msgid "Render checked cameras"
+msgstr "Render checked cameras"
+
+msgctxt "*"
+msgid "No cameras in scene"
+msgstr "No cameras in scene"
+
+msgctxt "*"
+msgid "Render this camera"
+msgstr "Render this camera"
+
+msgctxt "*"
+msgid "Limited support on this Blender"
+msgstr "Limited support on this Blender"
+
+msgctxt "*"
+msgid "Render with F12. Live preview needs 4.3+."
+msgstr "Render with F12. Live preview needs 4.3+."
+
+msgctxt "*"
+msgid "Live preview needs Blender 4.3+"
+msgstr "Live preview needs Blender 4.3+"
+
+msgctxt "*"
+msgid "Live preview needs Blender 4.3+. Render with F12 instead."
+msgstr "Live preview needs Blender 4.3+. Render with F12 instead."
+
+msgctxt "*"
+msgid "Passes to write:"
+msgstr "Passes to write:"
+
+msgctxt "*"
+msgid "light (diffuse)"
+msgstr "light (diffuse)"
+
+msgctxt "*"
+msgid "shadow"
+msgstr "shadow"
+
+msgctxt "*"
+msgid "No pass selected"
+msgstr "No pass selected"
+
+msgctxt "*"
+msgid "Far crush relief:"
+msgstr "Far crush relief:"
+
+msgctxt "*"
+msgid "Amount"
+msgstr "Amount"
+
+msgctxt "*"
+msgid "Radius (px)"
+msgstr "Radius (px)"
+
+msgctxt "*"
+msgid "Threshold"
+msgstr "Threshold"
+
+msgctxt "*"
+msgid "Created"
+msgstr "Created"
+
+msgctxt "*"
+msgid "Updated"
+msgstr "Updated"
+
+msgctxt "*"
+msgid "Already up to date"
+msgstr "Already up to date"
+
+msgctxt "*"
+msgid "materials"
+msgstr "materials"
+
+msgctxt "*"
+msgid "nodes"
+msgstr "nodes"
+
+msgctxt "*"
+msgid "File output"
+msgstr "File output"
+
+msgctxt "*"
+msgid "Far crush relief"
+msgstr "Far crush relief"
