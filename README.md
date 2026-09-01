@@ -1,6 +1,6 @@
 # FreePencil2 (HS Edition)
 
-> :info: 本バージョンは https://blender-assets.hidekisaito.com/ よりインストールできます。
+> :bulb: 本バージョンは https://blender-assets.hidekisaito.com/ よりインストールできます。
 
 > :warning:
 > 本バージョンは、FreePencil2にスペイン語対応などの追加機能を加えた改良版です。
