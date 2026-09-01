@@ -1,4 +1,12 @@
-# FreePencil2
+# FreePencil2 (HS Edition)
+
+---
+本バージョンは、FreePencil2にスペイン語対応などの追加機能を加えた改良版です。
+GPLライセンスに基づき提供される本バージョンはサポートなどはありません。
+また、榊正宗氏よりのサポートを受けることもできません。
+---
+Esta versión incluye una traducción provisional al español (Latinoamérica), realizada principalmente con traducción automática. El autor, Hideki Saito, añadió la traducción al español y actualmente está estudiando el idioma, por lo que las expresiones en español se seguirán mejorando en futuras actualizaciones.
+---
 
 3Dモデルから線画を自動生成する Blender アドオンです。
 
