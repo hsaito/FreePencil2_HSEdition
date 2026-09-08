@@ -7,7 +7,7 @@
 
 import bpy
 
-from . import ADDON_VERSION
+from . import ADDON_VERSION, version_label
 from . import compat
 
 from .vertex_color import LINK_MAKE_OT_FP, FREEPENCIL_OT_randomize_seed
@@ -22,7 +22,7 @@ from .auto_setup import FP_OT_AUTO_SETUP
 class FP_PT_Line(bpy.types.Panel):
     """Main sidebar panel (parent of the collapsible sections)."""
 
-    bl_label = f"FreePencil v{'.'.join(map(str, ADDON_VERSION))}"
+    bl_label = f"FreePencil v{version_label()}"
     bl_idname = "FREEPENCIL_PT_LINE"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -110,6 +110,10 @@ class FP_PT_Step1(_FPSub, bpy.types.Panel):
         row.prop(scene, "fp_sharp_edges", slider=True, text=t("Edge Angle"))
         col.prop(scene, "fp_seam_boundaries", text=t("Seam/material boundaries"))
         col.prop(scene, "fp_min_island_area_pct", text=t("Min island area %"))
+        col.prop(scene, "fp_ridge_amount", text=t("Ridge relief"), slider=True)
+        row = col.row(align=True)
+        row.enabled = scene.fp_ridge_amount > 0.0
+        row.prop(scene, "fp_ridge_radius", text=t("Ridge scale"), slider=True)
 
         # --- ボーン(キャラ用) ---
         box = layout.box()
@@ -177,14 +181,58 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
                  text=t("Enable Compositor Preview"))
         if not compat.HAS_AOV_IN_VIEWPORT_COMPOSITOR:
             col.label(text=t("Live preview needs Blender 4.3+"), icon="INFO")
-        col.prop(scene, "fp_white_preview",
-                 text=t("White material preview"), icon="MATERIAL",
-                 toggle=True)
+        # プレビューの種類。どれも「線の下に何を敷くか」の違いで、
+        # マテリアルには触らない
+        box = layout.box()
+        box.label(text=t("Preview:"), icon="MATERIAL")
+        box.prop(scene, "fp_preview_mode", expand=True)
+        if scene.fp_preview_mode == 'MONO_LIGHT':
+            box.prop(scene, "fp_mono_floor", text=t("Shadow floor"),
+                     slider=True)
+        col = layout.column(align=True)
         col.prop(scene, "fp_include_antialiasing",
                  text=t("Include Anti-Aliasing Node"))
         col.prop(scene, "fp_supersample",
                  text=t("2x supersampling (thin lines)"))
         col.prop(scene, "fp_line_sensitivity", text=t("Line sensitivity"))
+
+        # 線の強弱(入り抜き)。くぼみが深いほど太くする
+        box = layout.box()
+        box.label(text=t("Line weight (cavities):"), icon="MOD_THICKNESS")
+        col = box.column(align=True)
+        col.prop(scene, "fp_line_weight", text=t("Line weight from cavities"))
+        sub = col.column(align=True)
+        sub.enabled = scene.fp_line_weight
+        sub.prop(scene, "fp_lw_island_bias", text=t("Split less"),
+                 slider=True)
+        sub.prop(scene, "fp_lw_line_bias", text=t("Weaken the line"),
+                 slider=True)
+        sub.prop(scene, "fp_lw_strength", text=t("Weight strength"),
+                 slider=True)
+        sub.prop(scene, "fp_lw_ao_dist", text=t("Cavity radius"))
+        sub.prop(scene, "fp_lw_ao_blur", text=t("Cavity smoothing"))
+        sub.prop(scene, "fp_lw_bin", text=t("Weight binarize"), slider=True)
+        sub.prop(scene, "fp_lw_gain", text=t("Weight darkness"), slider=True)
+        sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
+                 slider=True)
+        sub2 = sub.column(align=True)
+        sub2.enabled = scene.fp_lw_crowd > 0.0
+        sub2.prop(scene, "fp_lw_crowd_radius", text=t("Crowding radius"))
+        sub2.prop(scene, "fp_lw_crowd_threshold", text=t("Crowding threshold"),
+                  slider=True)
+        # しきい値は絵ごとに15倍ひらくので固定値では配れない。
+        # 1カットに1回測って固定する
+        sub.operator("freepencil.measure_line_weight",
+                     text=t("Measure thresholds (once per cut)"),
+                     icon="DRIVER_DISTANCE")
+        row = sub.row(align=True)
+        for i in range(1, 5):
+            row.prop(scene, f"fp_lw_e{i}", text="")
+        # 「切る細かさ」は STEP1 の焼きに効くので、STEP3 だけでは
+        # 反映されない。ここを間違えると「変えたのに絵が変わらない」
+        # になる
+        sub.label(text=t("Run STEP0 again to apply (STEP3 is not enough)"),
+                  icon="INFO")
 
         # 遠景で線が黒ベタにつぶれるのを軽減する(0 で無効=画は変わらない)
         box = layout.box()

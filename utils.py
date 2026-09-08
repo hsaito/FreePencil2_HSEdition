@@ -264,7 +264,8 @@ def count_loose_parts(mesh, stop_at: int = 0) -> int:
     return len(seen)
 
 
-def choose_auto_threshold(angles_deg, has_armature=False, many_parts=False):
+def choose_auto_threshold(angles_deg, has_armature=False, many_parts=False,
+                          has_subsurf=False):
     """二面角の分布から STEP1 のシャープしきい値を自動決定する。
 
     実測(車/メカ/塔/人物/イカ/球/樹木の7モデル)に基づくルール:
@@ -280,6 +281,17 @@ def choose_auto_threshold(angles_deg, has_armature=False, many_parts=False):
     many_parts=True(ルースパーツの多い組立モデル: 骨格標本など)の場合も
     人工分割はしない。パーツ間のシルエット/深度線が既に十分な線源であり、
     細い部品への分割線は潰れの原因になるだけ(骨格モデルで実証)。
+
+    has_subsurf=True(サブディビジョンが生きている)の場合も人工分割はしない。
+    STEP1 が塗るのはモディファイア適用**前**のベースメッシュで、それは
+    なめらかな形を作るための粗いケージにすぎない。ケージの稜線に沿って
+    割ると、レンダリングでは存在しない格子がそのまま線として出る。
+
+    実測: 野球ボール(サブディブ1個/ベース320面)は p50 が小さいため
+    最後の枝に落ちて 9.9度 になり、球面全体にケージの格子が線で出た。
+    猫の置物(同じくサブディブ付き)は 60度 が選ばれていて問題なく、
+    手動で 20度 に下げると耳と顔にケージが出た。つまりサブディビジョンが
+    ある側では「下げない」のが正しい。
 
     戻り値: (threshold_deg, min_island_area_pct への提案 or None)
     """
@@ -304,6 +316,9 @@ def choose_auto_threshold(angles_deg, has_armature=False, many_parts=False):
         return max(60.0, min(85.0, p99 * 0.9)), None
     if many_parts:
         # 一様に滑らかでも、多パーツ組立ならパーツ境界の線で十分
+        return 60.0, None
+    if has_subsurf:
+        # ベースメッシュは粗いケージ。ここで割るとケージが線になる
         return 60.0, None
     return max(5.0, pct(50) * 0.95), None
 
@@ -351,6 +366,131 @@ def color_graph_greedy(neighbors):
 
 def _luma(c) -> float:
     return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+
+# 隣接に要求する最低の輝度差。
+#
+# 平面の格子に既知の色を置いて測ると、輝度差 0 でも RGB 距離があれば線は出た
+# (dev/note_assets/probe_line_response.py)。しかし実モデルでは輝度が近いと
+# 線が消える回帰が観測されている(woman の顔と服の線が消滅、tests_smoke t13)。
+# 理想条件の実測より、実機で起きた失敗を優先する。
+MIN_NEIGHBOR_LUMA = 0.12
+
+# パレット選定時に輝度差へ持たせる余裕。ジッターで縮む分を見込む
+JITTER_LUMA_MARGIN = 1.25
+
+
+def palette_for_diversity(min_dist, max_k, seed_int, min_k=1,
+                          min_luma=MIN_NEIGHBOR_LUMA,
+                          luma_lo=0.25, luma_hi=0.75):
+    """制約を守れる範囲で、いちばん色数の多いパレットを返す。
+
+    彩色数(=隣接グラフの色数)ぶんしか作らないと、島同士がメッシュで
+    繋がっていない形で色が足りなくなる。実測:
+
+        "Text"        124島 / 隣接辺185 -> 彩色数 2
+        "Text"(自動)   13島 / 隣接辺  0 -> 彩色数 1
+        "FreePencil2" 237島 / 隣接辺340 -> 彩色数 4
+
+    "Text" は全部が同じ黄色になっていた(1クラス + ジッターなので色相が
+    ひとつしか無い)。そこで彩色数を下限として、色数を増やせるだけ増やす。
+
+    増やす上限は2つの実測値で決まる。色数 k のときパレットは
+    RGB最小距離 と 最小輝度差 が次のようになる。
+
+        k    2      4      6      8     12     16     48
+        RGB  1.204  0.750  0.534  0.456  0.371  0.317  0.203
+        輝度 0.500  0.167  0.100  0.071  0.045  0.033  0.011
+
+    輝度は [luma_lo, luma_hi] の幅を等分するので k を増やすほど縮む。
+    既定の幅 0.5 では輝度差 0.12 を守れるのは5色まで。ここが天井。
+
+    min_k(=彩色数)は制約より優先する。下回ると隣が同じ色になって
+    塗り分けが成立しないため(立方体は6面が互いに隣接するので6色要る)。
+    """
+    # build_palette が返す dmin / lmin は **全ペア**の最小値だが、契約が
+    # 要るのは **隣り合うペアだけ**。全ペアで縛ると色数が一気に落ちる
+    # (既定の窓で4色が上限になり、文字の側面が同じ色になった)。
+    #
+    # パレットは「クラス番号が近いほど輝度が離れる」順に並んでいるので、
+    # 先頭 min_k 色は必ずよく離れている。従来の割り当て(島 -> クラス番号)は
+    # そこだけを使うため、パレットを大きくしても出発点は悪化しない。
+    # 隣接の契約は diversify_island_colors が色を移すときに見る。
+    #
+    # ここでは「先頭 min_k 色が契約を満たすか」だけを確かめて、
+    # 満たす中で最大の色数を採る。
+    need_luma = min_luma * JITTER_LUMA_MARGIN
+    lo = max(1, int(min_k))
+    hi = max(lo, int(max_k))
+
+    def head_ok(pal):
+        """出発点に使う先頭 lo 色が契約を満たすか。"""
+        for a in range(min(lo, len(pal))):
+            for b in range(a + 1, min(lo, len(pal))):
+                ca, cb = pal[a], pal[b]
+                d = sum((ca[i] - cb[i]) ** 2 for i in range(3)) ** 0.5
+                if d < min_dist or abs(_luma(ca) - _luma(cb)) < need_luma:
+                    return False
+        return True
+
+    for k in range(hi, lo - 1, -1):
+        pal, dmin, lmin = build_palette(k, seed_int, luma_lo=luma_lo,
+                                        luma_hi=luma_hi)
+        if head_ok(pal):
+            return pal, dmin, lmin
+    return build_palette(lo, seed_int, luma_lo=luma_lo, luma_hi=luma_hi)
+
+
+def diversify_island_colors(neighbors, classes, palette,
+                            min_rgb, min_luma=MIN_NEIGHBOR_LUMA):
+    """彩色済みの割り当てを出発点に、制約を壊さない範囲で色を散らす。
+
+    color_graph_greedy の結果(島 -> クラス番号)をそのまま色番号として使うと、
+    パレットを増やしても先頭の数色しか使われない。かといって最初から貪欲に
+    選び直すと、密なグラフ(立方体の6面など)で従来より悪い割り当てになり、
+    距離の契約を割ってしまった(実測: 立方体で違反2件)。
+
+    そこで**従来の割り当てから出発**して、次の場合だけ色を移す。
+
+      - いまの色が隣との制約(RGB距離 min_rgb / 輝度差 min_luma)を
+        満たしていない → 満たす色があれば移る(改善)
+      - 満たしている → 使用回数がより少ない色で、かつ制約も満たす色が
+        あれば移る(色を散らす。制約は保ったまま)
+
+    どちらも制約を悪化させない。候補が無ければ動かさないので、
+    最悪でも従来と同じ割り当てになる。
+    """
+    n = len(neighbors)
+    k = len(palette)
+    if n == 0 or k == 0:
+        return list(classes), 0
+    pal = [tuple(float(v) for v in c[:3]) for c in palette]
+    lum = [_luma(c) for c in pal]
+
+    def ok(a, b):
+        d = ((pal[a][0] - pal[b][0]) ** 2 + (pal[a][1] - pal[b][1]) ** 2
+             + (pal[a][2] - pal[b][2]) ** 2) ** 0.5
+        return d >= min_rgb and abs(lum[a] - lum[b]) >= min_luma
+
+    out = [min(c, k - 1) for c in classes]
+    usage = [0] * k
+    for c in out:
+        usage[c] += 1
+
+    # 制約の厳しい島から見る。次数が同じなら島番号順(決定論的)
+    for i in sorted(range(n), key=lambda x: (-len(neighbors[x]), x)):
+        nb = [out[j] for j in neighbors[i]]
+        cur = out[i]
+        cur_ok = all(ok(cur, u) for u in nb)
+        cand = [c for c in range(k) if c != cur and all(ok(c, u) for u in nb)]
+        if not cand:
+            continue
+        best = min(cand, key=lambda c: (usage[c], c))
+        if not cur_ok or usage[best] + 1 < usage[cur]:
+            usage[cur] -= 1
+            usage[best] += 1
+            out[i] = best
+    return out, sum(1 for u in usage if u)
 
 
 # パーツ・トーン分けで使う明度窓。
@@ -477,7 +617,8 @@ def build_palette(k, seed_int, luma_lo=0.25, luma_hi=0.75):
     return colors, pmin, lmin
 
 
-def apply_face_colors(obj, vcol_index, face_r, face_g, face_b):
+def apply_face_colors(obj, vcol_index, face_r, face_g, face_b,
+                      loop_offset=None):
     vcols = obj.data.vertex_colors if bpy.app.version < (3, 4, 0) else obj.data.color_attributes
     if not (0 <= vcol_index < len(vcols)):
         return
@@ -508,6 +649,14 @@ def apply_face_colors(obj, vcol_index, face_r, face_g, face_b):
     buf[:, 1] = np.asarray(face_g, dtype=np.float32)[loop_poly]
     buf[:, 2] = np.asarray(face_b, dtype=np.float32)[loop_poly]
     buf[:, 3] = 1.0
+
+    # 稜線の起伏(コーナーごと)。島の色は面ごとに一定なので、これを足すと
+    # 島の**中だけ**がゆるく揺れる。島境界の段差はそのまま残るので、
+    # パーツ線・鋭角線は影響を受けない
+    if loop_offset is not None:
+        off = np.asarray(loop_offset, dtype=np.float32)
+        if off.shape == (n_loops, 3):
+            np.clip(buf[:, :3] + off, 0.0, 1.0, out=buf[:, :3])
 
     # loop_start が昇順に詰まっていない(＝np.repeat の並びと一致しない)
     # メッシュは理論上ありうるので、そのときだけ並べ直す

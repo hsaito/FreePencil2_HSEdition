@@ -113,11 +113,133 @@ def connected_components(ea: np.ndarray, eb: np.ndarray, n: int) -> np.ndarray:
         f"(残り辺 {len(ea)} / 頂点 {n})")
 
 
+
+# 島が細かすぎる = メッシュの網目がそのまま線になっている状態。
+# 面いくつに1島までなら「線」として見られるか、の上限。
+# 実測(BlenderKit 40モデル): 健全なモデルは 0.00〜0.10 に収まり、
+# 壊れているものは 0.20〜0.81 だった。0.08 はその谷間に置いている。
+MAX_ISLANDS_PER_FACE = 0.08
+BISECT_TRIES = 6      # 上限を満たす中で最も細かい角度を詰める回数
+MIN_ISLANDS = 8       # これを下回るまでまとめない(線が消えるため)
+
+
+def resolve_threshold(topo, start_deg: float, seam: bool, clear: bool,
+                      max_ratio: float = MAX_ISLANDS_PER_FACE,
+                      tries: int = 6) -> tuple:
+    """実際に切ってみて、細かすぎたら閾値を上げ直す。
+
+    二面角の分布だけで系統を当てにいく方式は、実測で 39モデル中 9モデルが
+    切れすぎになった(野球ボール 島/面 0.81、本 0.66、カエデ 0.41 など)。
+    分類を当てるより、切った結果を見て直すほうが確実で外れない。
+
+    島検出は numpy 化で 1000万面でも 0.24 秒なので、数回試しても実用速度に
+    収まる。戻り値は (採用した角度, 試行回数, 最終的な島/面)。
+    """
+    nf = max(topo.n_faces, 1)
+    # 判定は比率ではなく「島の数」で行う。比率だけだと面数の少ないメッシュが
+    # 壊れる: 立方体は6面なので上限0.08 = 許容0.48島となり、179度まで上げて
+    # 1島に潰れた。6面が別色になるのは塗り分けの最も基本的な動作なので、
+    # 少ない側は下限で守る
+    limit = max(int(max_ratio * nf), MIN_ISLANDS)
+
+    def cut(d):
+        topo.mark_boundaries(np.radians(d), seam, clear)
+        topo.build_islands()
+        return len(topo.islands)
+
+    deg = float(start_deg)
+    used = deg
+    cnt = nf
+    n = 0
+    lo = None            # まだ切れすぎている角度(=島が多い側)
+    for i in range(tries):
+        cnt = cut(deg)
+        used = deg
+        n = i + 1
+        if cnt <= limit:
+            break
+        lo = deg
+        if deg >= 179.0:
+            return used, n, cnt / nf
+        # 上げ幅は「まだ遠いほど大きく」。1回で行き過ぎないよう頭打ちも置く
+        over = min(8.0, cnt / max(limit, 1))
+        deg = min(179.0, deg + max(8.0, deg * 0.35 * over))
+    else:
+        return used, n, cnt / nf
+
+    if lo is not None:
+        # 上げ幅が粗いので上限を飛び越していることがある。上限を守る中で
+        # 最も細かい角度を二分探索で拾い直す
+        hi = used
+        for _ in range(BISECT_TRIES):
+            if hi - lo < 0.5:
+                break
+            mid = (lo + hi) * 0.5
+            n += 1
+            if cut(mid) <= limit:
+                hi = mid
+            else:
+                lo = mid
+        used = hi
+        cnt = cut(used)
+
+    # 二面角が一様なメッシュ(なめらかな球など)は「全面が別島」か「1島」の
+    # 二択しかなく、中間が存在しない。ここで1島を選ぶと分割線が全部消えて
+    # のっぺりしたシルエットになる。塗り分け法は角の無い物体こそ人工的に
+    # 割る必要があるので、下限を割るくらいなら元の細かい方を採る
+    if cnt < MIN_ISLANDS and cut(start_deg) >= MIN_ISLANDS:
+        used = float(start_deg)
+        cnt = cut(used)
+    return used, n, cnt / nf
+
+# 角度を下げる方向の探索。1パーツあたり何島まで許すか。
+#
+# 実測(角度を 5〜75度で振って島の数を数えた):
+#   sample2の箱(10面)  25度で10島 / 5度でも10島
+#   円柱32(34面)       15度で3島  / 10度で34島
+#   スザンヌ適用(7872面) 20度で29島 / 15度で146島 / 5度で2894島
+#   UV球64(2048面)     10度で1島  / 5度で662島
+# つまり格子が出るのは 5〜10度で、25度ではハイポリは1つも割れない。
+# 「メカだから下げる/ハイポリだから下げない」ではなく、下げた結果の
+# 島の数を見れば同じ規則で扱える。20 はこの4形状の谷に置いた仮の値。
+LOWER_ISLANDS_PER_PART = 20
+LOWER_CAND_DEG = (75.0, 60.0, 50.0, 40.0, 30.0, 25.0, 20.0, 15.0)
+
+
+def lower_threshold_for_detail(topo, n_parts: int, seam: bool, clear: bool,
+                               cap_per_part: int = LOWER_ISLANDS_PER_PART):
+    """角度を下げて拾える線があるなら下げる。無ければ元のまま。
+
+    分位点だけで決めると、多数派の角度が少数派を隠す。実測: 面取りした
+    箱(10面)の二面角は 90度x8 / 79度x4 / 64度x4 / 25.6度x4 で、
+    p95 が 90度になるため `p95>75 -> 60度` の枝に落ち、緩い斜面の
+    25.6度が切られずに線が消えていた。
+
+    そこで候補角を高い方から順に切ってみて、
+      * 島の数が上限(パーツ数 x cap_per_part)を超えない範囲で
+      * 島がいちばん多くなる、最も高い角度
+    を採る。同じ島数なら高い方を採るのは、情報が増えないのに下げると
+    不安定になるため(上の箱は25度以下で島数が変わらない)。
+
+    戻り値は (採用した角度, その島数)。
+    """
+    cap = max(1, n_parts) * cap_per_part
+    best_deg, best_n = None, -1
+    for d in LOWER_CAND_DEG:
+        topo.mark_boundaries(np.radians(d), seam, clear)
+        topo.build_islands()
+        n = len(topo.islands)
+        if n <= cap and n > best_n:
+            best_deg, best_n = d, n
+    return best_deg, best_n
+
+
 class MeshTopology:
     """1つのメッシュから、島の判定に要るものを全部配列で持つ。"""
 
     __slots__ = ("n_faces", "n_edges", "face_a", "face_b", "two_face",
-                 "angle", "sharp", "seam", "material", "area", "center",
+                 "angle", "sharp", "seam", "crease", "material", "area",
+                 "center",
                  "is_boundary", "labels", "islands", "_island_of_face",
                  "_inc_faces", "_inc_first", "_inc_count", "_degenerate")
 
@@ -230,6 +352,18 @@ class MeshTopology:
             mesh.edges.foreach_get("use_edge_sharp", self.sharp)
             mesh.edges.foreach_get("use_seam", self.seam)
 
+        # クリース。サブディビジョンで「丸めない」と作者が指定した辺。
+        # 4.x 以降は属性に移り、しかも**使ったときだけ作られる**ので、
+        # 無ければ全部ゼロ扱いでよい
+        self.crease = np.zeros(ne, dtype=np.float32)
+        if ne:
+            attr = mesh.attributes.get("crease_edge")
+            if attr is not None and attr.domain == 'EDGE':
+                try:
+                    attr.data.foreach_get("value", self.crease)
+                except (TypeError, RuntimeError):
+                    pass
+
         # --- 辺 -> 面2枚。ループを辺で並べ替えて、2回出てくる辺だけ拾う。
         # BMEdge.is_manifold は「面がちょうど2枚」と同義なので、
         # この判定がそのまま bmesh 版の分岐と一致する
@@ -278,6 +412,55 @@ class MeshTopology:
         self.labels = np.arange(nf, dtype=np.int32)
         self.islands = []
         self._island_of_face = None
+
+    # ------------------------------------------------------------------
+    def smooth_face_colors(self, cols: np.ndarray, iterations: int,
+                           angle_rad: float = None,
+                           barrier: np.ndarray = None) -> np.ndarray:
+        """頂点カラーをぼかす。線を出したくない辺の段差を消すために使う。
+
+        線の検出は色の段差(Sobel)なので、段差を溶かせばその境界の線は消え、
+        段差が残る所には線が残る。どの辺をまたいで平均するかで用途が変わる。
+
+        barrier を渡した場合: **barrier の辺だけ**を残し、他は全部ぼかす。
+        サブディビジョンがかかったモデル用。ケージの角は二面角が大きくても
+        レンダリングでは丸くなるので、そこに線が出てはいけない。角度で
+        「鋭角」と判定された辺こそが誤判定なので、残してはいけない。
+        残すべきなのは作者が明示した辺(クリース/シャープ)だけ。
+
+        angle_rad を渡した場合: 二面角がそれ未満の辺だけをまたいで平均する。
+        いわゆるエッジ保持スムージング。
+
+        注意: これは拡散なので、何度もまわすとつながっている領域全体が
+        一つの平均色へ収束する。境界だけがぼけるのではない。回数は
+        「線が消える最小限」に留めること(実測: 20回で頭部が灰色一色になった)。
+
+        cols は (面数, 3) の float32。戻り値も同じ形。
+        """
+        if iterations <= 0 or self.n_faces == 0:
+            return cols
+        ok = self.two_face & ~np.isnan(self.angle)
+        if barrier is not None:
+            soft = ok & ~barrier
+        else:
+            soft = ok & (self.angle < angle_rad)
+        a = self.face_a[soft].astype(np.intp)
+        b = self.face_b[soft].astype(np.intp)
+        if not len(a):
+            return cols
+        out = cols.astype(np.float32, copy=True)
+        # 自分自身の重みを1にして、なめらかな辺でつながる隣を足していく。
+        # 重みが辺の本数で決まるので、面の粗密によらず同じ効き方になる
+        deg = np.zeros(self.n_faces, dtype=np.float32)
+        np.add.at(deg, a, 1.0)
+        np.add.at(deg, b, 1.0)
+        denom = (deg + 1.0)[:, None]
+        for _ in range(int(iterations)):
+            acc = out.copy()
+            np.add.at(acc, a, out[b])
+            np.add.at(acc, b, out[a])
+            out = acc / denom
+        return out
 
     # ------------------------------------------------------------------
     def angle_samples_deg(self) -> list:
@@ -388,6 +571,185 @@ class MeshTopology:
         for i, faces in enumerate(islands):
             io[faces] = i
         self._island_of_face = io
+
+
+# ルースパーツ同士の近接判定。隙間が「小さいほうの島の対角線」の
+# この割合以内なら隣と見なす = ほぼ接している、とみなす範囲。
+#
+# 全体サイズ基準(2%)は駄目だった。同じ隙間でもモデルが小さいと繋がらず、
+# 一辺1.8の立方体を2.2間隔で置くと1組も隣接にならなかった(t40)。
+# かといって 0.5 まで広げると離れた島まで繋がり、隣接色距離の契約を
+# 割った(既存の t14/t19 が落ちた)。0.2 はその間で、
+#   隙間/自分の対角 = 0.13 の対を繋ぎ、0.29 の対は繋がない
+# という実測の谷に置いている。離れている側はシルエット線が担う。
+LOOSE_PROXIMITY_TOL = 0.2
+# 総当たりの上限。これを超えたら諦める(線が出ないより遅いほうが困る)
+LOOSE_PROXIMITY_MAX_ISLANDS = 1500
+# 稜線の起伏を作るときの拡散回数の上限
+MAX_RIDGE_ITERS = 400
+
+
+def add_loose_part_proximity(topo: MeshTopology, mesh, neighbors: list,
+                             tol_frac: float = LOOSE_PROXIMITY_TOL,
+                             max_islands: int = LOOSE_PROXIMITY_MAX_ISLANDS
+                             ) -> int:
+    """メッシュの辺で繋がっていない島同士を、近ければ隣として足す。
+
+    島の隣接は境界エッジ越しにしか見ていない。別のルースパーツ
+    (スザンヌの目、バラバラの文字)はメッシュの辺を共有しないので
+    「隣接なし」と判定され、貪欲彩色が全部を同じクラスに置く。画面では
+    重なって見えているのに境界に色差が生まれず、線が出ない。
+    2026-08-09 の「違反0件」誤報の原因もこれ(CLAUDE.md)。
+
+    オブジェクト単位では fp_part_tint がバウンディングボックスの近接で
+    同じことをしている。ここは1つのメッシュの中のルースパーツに
+    同じ考え方を持ち込む。足すのは**別パーツ同士**だけ。同じパーツの中は
+    辺で繋がっているので既存の隣接判定で足りる。
+
+    戻り値は足した隣接の本数。
+    """
+    n = len(topo.islands)
+    nf = topo.n_faces
+    if n < 2 or n > max_islands or nf == 0:
+        return 0
+    nv = len(mesh.vertices)
+    ne = len(mesh.edges)
+    nl = len(mesh.loops)
+    if nv == 0 or ne == 0 or nl == 0:
+        return 0
+
+    # --- 面 -> ルースパーツ番号 ---
+    ev = np.empty(ne * 2, dtype=np.int32)
+    mesh.edges.foreach_get("vertices", ev)
+    ev = ev.reshape(-1, 2)
+    part_of_vert = connected_components(ev[:, 0], ev[:, 1], nv)
+
+    loop_v = np.empty(nl, dtype=np.int32)
+    mesh.loops.foreach_get("vertex_index", loop_v)
+    totals = np.empty(nf, dtype=np.int32)
+    mesh.polygons.foreach_get("loop_total", totals)
+    face_of_loop = np.repeat(np.arange(nf, dtype=np.int32), totals)
+
+    io = topo._island_of_face
+    isl_of_loop = io[face_of_loop]
+
+    # 島 -> パーツ番号(島は必ず1つのパーツに収まる)
+    part_of_island = np.zeros(n, dtype=np.int64)
+    part_of_island[isl_of_loop] = part_of_vert[loop_v]
+    if len(np.unique(part_of_island)) < 2:
+        return 0
+
+    # --- 島ごとのバウンディングボックス ---
+    co = np.empty(nv * 3, dtype=np.float32)
+    mesh.vertices.foreach_get("co", co)
+    vco = co.reshape(-1, 3)[loop_v]
+    lo = np.full((n, 3), np.inf, dtype=np.float32)
+    hi = np.full((n, 3), -np.inf, dtype=np.float32)
+    np.minimum.at(lo, isl_of_loop, vco)
+    np.maximum.at(hi, isl_of_loop, vco)
+
+    # 許容する隙間は**その2つの島自身の大きさ**を基準にする。
+    #
+    # 物体全体の 2% にしていたが、これだと同じ隙間でもモデルが小さいと
+    # 繋がらない。実測: 一辺1.8の立方体3個を2.2間隔(隙間0.4)で並べると
+    # 全体4.0の2% = 0.08 にしか届かず、1組も隣接にならなかった。
+    # 「近いかどうか」は本来まわりの大きさに左右されないので、
+    # 小さいほうの島の対角線に対する割合で見る
+    size = np.linalg.norm(np.where(np.isfinite(hi - lo), hi - lo, 0.0), axis=1)
+
+    # --- 別パーツ同士で、隙間が許容以内の対を拾う ---
+    added = 0
+    step = 256
+    for s in range(0, n, step):
+        e = min(s + step, n)
+        gap = np.zeros((e - s, n), dtype=np.float32)
+        for ax in range(3):
+            d = np.maximum(lo[s:e, ax][:, None] - hi[None, :, ax],
+                           lo[None, :, ax] - hi[s:e, ax][:, None])
+            np.maximum(gap, d, out=gap)
+        tol = tol_frac * np.minimum(size[s:e][:, None], size[None, :])
+        near = gap <= tol
+        near &= part_of_island[s:e][:, None] != part_of_island[None, :]
+        for r, c in zip(*np.nonzero(near)):
+            i, j = s + int(r), int(c)
+            if j in neighbors[i]:
+                continue
+            neighbors[i].add(j)
+            neighbors[j].add(i)
+            added += 1
+    # 対は既に1回しか数えていない(2周目は上の in 判定で弾かれる)
+    return added
+
+
+def ridge_residual(mesh, radius_frac: float):
+    """法線から「その場所の大きな向き」を引いた残りを、角ごとに返す。
+
+    島の切り方は面の縁でしか色を変えられないので、なめらかな出っ張り
+    (まぶたの上の稜線など)に線が出せない。細分すると1つの60度の折れが
+    4つの15度に割れて、辺ごとの二面角では拾えなくなるためでもある。
+
+    法線そのものを色にすると今度は凸面が一様にしきい値を超えて真っ黒に
+    潰れる。だから**引き算**する。
+
+        m = 法線を距離 R ぶん均したもの   … その場所の大きな向き
+        d = 法線 - m                      … 大きな向きからのズレだけ
+
+    なめらかな凸面は 法線 ≒ m なので d ≒ 0 で、色が動かない。稜線だけが
+    ズレを持つ。平らなパネル(メカ)でも d ≒ 0 なので、硬い形には何も
+    足されない。形のほうが勝手に決めるので、モードの切り替えが要らない。
+
+    均す回数は距離から出す。拡散が届く距離は およそ sqrt(回数) x 辺長
+    なので、回数 = (目標距離 / 辺長)^2 なら面の細かさによらず同じ距離に
+    なる。回数を固定にすると、粗いケージだけ頭全体が均されて稜線が消えた
+    (実測: 8回固定でケージの眉が消滅)。
+
+    戻り値は (loops, 3) の配列。値域は概ね ±0.5。
+    """
+    nv = len(mesh.vertices)
+    nl = len(mesh.loops)
+    ne = len(mesh.edges)
+    if nv == 0 or nl == 0 or ne == 0 or radius_frac <= 0.0:
+        return None
+
+    co = np.empty(nv * 3, dtype=np.float32)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3).astype(np.float64)
+    vn = np.empty(nv * 3, dtype=np.float32)
+    mesh.vertices.foreach_get("normal", vn)
+    vn = vn.reshape(-1, 3).astype(np.float64)
+    ev = np.empty(ne * 2, dtype=np.int32)
+    mesh.edges.foreach_get("vertices", ev)
+    ev = ev.reshape(-1, 2)
+
+    size = float(np.linalg.norm(co.max(axis=0) - co.min(axis=0)))
+    el = np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1)
+    mean_edge = float(np.mean(el)) if len(el) else size
+    iters = int(round((size * radius_frac / max(mean_edge, 1e-9)) ** 2))
+    # 上限を置く。1回あたり全頂点を2度なめるので、細かいメッシュで
+    # 回数が数千に膨らむと STEP1 が体感で止まる
+    iters = min(iters, MAX_RIDGE_ITERS)
+    if iters <= 0:
+        return None
+
+    a = ev[:, 0].astype(np.int64)
+    b = ev[:, 1].astype(np.int64)
+    deg = np.bincount(np.concatenate([a, b]), minlength=nv).astype(np.float64)
+    deg[deg == 0] = 1.0
+    den = (deg + 1.0)[:, None]
+    m = vn.copy()
+    for _ in range(iters):
+        acc = m.copy()
+        np.add.at(acc, a, m[b])
+        np.add.at(acc, b, m[a])
+        m = acc / den
+    ln = np.linalg.norm(m, axis=1)
+    ln[ln < 1e-12] = 1.0
+    m /= ln[:, None]
+
+    d = np.clip((vn - m) * 0.5, -1.0, 1.0)
+    lv = np.empty(nl, dtype=np.int32)
+    mesh.loops.foreach_get("vertex_index", lv)
+    return d[lv], iters
 
 
 def merge_small_islands(topo: MeshTopology, min_area_pct: float) -> None:

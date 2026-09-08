@@ -85,7 +85,15 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         if scene.fp_auto_seam:
             scene.fp_seam_boundaries = True
         if scene.fp_auto_merge:
-            scene.fp_min_island_area_pct = 0.02
+            # 0.02% は「小島の掃除」の値で、塗りの粒度には効かなかった。
+            # 実測(スザンヌ適用済み 7,872面): 0% -> 429色 / 0.5% -> 9色 /
+            # 1% -> 6色 / 2% -> 4色。1% で頭が1色にまとまり、目と口だけが
+            # 残る。メカも 1% ならパネルの区別を保ったまま粒が落ちる
+            scene.fp_min_island_area_pct = 1.0
+            # 広くまとめると島の中の線が消えるので、稜線の起伏で補う。
+            # 平らな面では残差がほぼゼロなのでメカには足されない
+            scene.fp_ridge_amount = 0.25
+            scene.fp_ridge_radius = 0.08
         if scene.fp_auto_part_tint:
             scene.fp_part_tint = True
         scene.fp_bone_grouping_mode = 'basename'

@@ -48,6 +48,10 @@ OUTPUT_NODE_TYPES = ("COMPOSITE", "GROUP_OUTPUT")
 # 4.x は 'DiffDir'、5.x で 'Diffuse Direct' に変わった(実測)。
 DIFFUSE_DIRECT_SOCKETS = ("Diffuse Direct", "DiffDir")
 
+# アンビエントオクルージョンのソケット名。4.x は 'AO'、
+# 5.x で 'Ambient Occlusion' に変わった(実測)
+AO_SOCKETS = ("Ambient Occlusion", "AO")
+
 
 def render_layer_socket(rl_node, names):
     """名前候補の順に Render Layers の出力ソケットを探す。

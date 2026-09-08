@@ -404,6 +404,14 @@ msgid "Min island area %"
 msgstr "最小島面積 %"
 
 msgctxt "*"
+msgid "Ridge relief"
+msgstr "稜線の起伏"
+
+msgctxt "*"
+msgid "Ridge scale"
+msgstr "稜線の大きさ"
+
+msgctxt "*"
 msgid "Hard boundary bones"
 msgstr "硬境界ボーン"
 
@@ -515,3 +523,97 @@ msgstr "ファイル出力"
 msgctxt "*"
 msgid "Far crush relief"
 msgstr "遠景つぶれ軽減"
+
+msgctxt "*"
+msgid "Preview:"
+msgstr "プレビュー:"
+
+msgctxt "*"
+msgid "Materials"
+msgstr "マテリアルのまま"
+
+msgctxt "*"
+msgid "White"
+msgstr "白"
+
+msgctxt "*"
+msgid "Mono (diffuse light)"
+msgstr "モノクロ（ディフューズライト）"
+
+msgctxt "*"
+msgid "Show the scene as it is, with lines on top"
+msgstr "シーンをそのまま表示し、その上に線を乗せます"
+
+msgctxt "*"
+msgid "Flat white under the lines. Pure line art"
+msgstr "線の下を白一色にします。純粋な線画になります"
+
+msgctxt "*"
+msgid "Shadow floor"
+msgstr "影の下限"
+
+# --- v2.8: 線の強弱(くぼみ) ---
+
+msgctxt "*"
+msgid "Line weight (cavities):"
+msgstr "線の強弱(くぼみ):"
+
+msgctxt "*"
+msgid "Line weight from cavities"
+msgstr "くぼみで線に強弱をつける"
+
+msgctxt "*"
+msgid "Split less"
+msgstr "島を細かく切らない"
+
+msgctxt "*"
+msgid "Weaken the line"
+msgstr "線を弱める"
+
+msgctxt "*"
+msgid "Weight strength"
+msgstr "強弱の強さ"
+
+msgctxt "*"
+msgid "Cavity radius"
+msgstr "くぼみの半径"
+
+msgctxt "*"
+msgid "Cavity smoothing"
+msgstr "くぼみのなめらかさ"
+
+msgctxt "*"
+msgid "Weight binarize"
+msgstr "2値化のしきい値"
+
+msgctxt "*"
+msgid "Weight darkness"
+msgstr "濃さ"
+
+msgctxt "*"
+msgid "Keep crowded lines thin"
+msgstr "詰まった線は太らせない"
+
+msgctxt "*"
+msgid "Crowding radius"
+msgstr "詰まりを見る半径"
+
+msgctxt "*"
+msgid "Crowding threshold"
+msgstr "詰まりのしきい値"
+
+msgctxt "*"
+msgid "Measure thresholds (once per cut)"
+msgstr "しきい値を測る(カットに1回)"
+
+msgctxt "*"
+msgid "Run STEP0 again to apply (STEP3 is not enough)"
+msgstr "反映には STEP0 をやり直してください(STEP3 では足りません)"
+
+msgctxt "*"
+msgid "Run STEP3 first, and point the camera at the subject"
+msgstr "先に STEP3 を実行し、カメラを被写体に向けてください"
+
+msgctxt "*"
+msgid "Measure line weight thresholds"
+msgstr "線の強弱のしきい値を測る"

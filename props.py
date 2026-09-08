@@ -19,33 +19,61 @@ def _update_line_tuning(self, context):
     (ノードエディタを開かずにサイドバーだけで調整できる)。
     """
     from . import fp_core
+    from . import line_weight
     scene = context.scene
     for ng in bpy.data.node_groups:
         if ng.name.startswith(fp_core.NODE_GROUP_PREFIX):
             fp_core.apply_line_tuning(
                 ng,
-                getattr(scene, "fp_line_sensitivity", 1.0),
+                line_weight.effective_sensitivity(scene),
                 fp_core.channel_strengths_from_scene(scene))
 
 
 def _update_far_relief(self, context):
     """遠景つぶれ軽減のスライダーを、生成済みノードへ即時反映する。"""
     from . import fp_core
+    from . import line_weight
     scene = context.scene
     for ng in bpy.data.node_groups:
         if ng.name.startswith(fp_core.NODE_GROUP_PREFIX):
             fp_core.far_relief_from_scene(ng, scene)
 
 
-def _update_white_preview(self, context):
-    """白マテリアル強制プレビューの ON/OFF(非破壊スワップ)。"""
+def _apply_preview_mode(scene) -> None:
+    """プレビューの種類を1か所で反映する。
+
+    どちらも「PROノードの Image 入力に何を流すか」を変えるだけなので、
+    同時には成立しない。片方を立てるときは必ずもう片方を下ろす。
+    """
     from . import fp_core
-    scene = context.scene
-    n = fp_core.set_white_preview(
-        scene, scene.fp_white_preview,
+    mode = getattr(scene, "fp_preview_mode", "NONE")
+    fp_core.set_white_preview(
+        scene, mode == "WHITE",
         keep_glass=getattr(scene, "fp_white_keep_glass", True))
-    logger.info(f"White preview {'ON' if scene.fp_white_preview else 'OFF'}: "
-                f"{n} objects")
+    fp_core.set_mono_light_preview(
+        scene, mode == "MONO_LIGHT",
+        floor=getattr(scene, "fp_mono_floor", 0.25))
+    if mode == "MONO_LIGHT":
+        # 陰影の素になるパスが無いと真っ黒になる
+        vl = bpy.context.view_layer
+        if not vl.use_pass_diffuse_direct:
+            vl.use_pass_diffuse_direct = True
+            logger.info("Enabled the Diffuse Direct pass for mono preview")
+    logger.info(f"Preview mode: {mode}")
+
+
+def _update_preview_mode(self, context):
+    _apply_preview_mode(context.scene)
+
+
+def _update_white_preview(self, context):
+    """旧トグル。種類へ橋渡しして、古いスクリプトでも動くようにする。"""
+    scene = context.scene
+    want = "WHITE" if scene.fp_white_preview else "NONE"
+    if getattr(scene, "fp_preview_mode", "NONE") != want:
+        scene.fp_preview_mode = want   # 種類側の更新フックが実処理をする
+    else:
+        _apply_preview_mode(scene)
 
 
 def _update_white_keep_glass(self, context):
@@ -118,11 +146,89 @@ def register_props():
                 "into their largest neighbor (0 = off)"
             ),
             # 既定OFF(0): 既存挙動を変えない。バッチはプリセットで0.02を指定
+            #
+            # 上限は 5% だったが、これは「小島の掃除」しか想定していない値。
+            # 実測では 1〜2% で塗りが広くまとまり(スザンヌ 429色 -> 6色)、
+            # メカは 5% でパネルごとに1色になる。有機的な形はさらに上まで
+            # 上げると最終的にルースパーツ単位の1色に行き着くので、
+            # そこまで動かせるようにする
             default=0.0,
             min=0.0,
-            max=5.0,
+            max=100.0,
             step=0.01,
             precision=3
+        ),
+        "fp_ridge_amount": FloatProperty(
+            name="Ridge relief",
+            description=(
+                "Add a faint normal-based relief inside each island so that "
+                "smooth ridges (a brow, a fold) get a line. 0 = off"
+            ),
+            # 島の色は面ごとに一定なので、足しても島境界の段差は残る。
+            # 隣接島の色距離の契約(既定0.5)を割らないよう小さく保つ
+            default=0.0,
+            min=0.0,
+            max=0.5,
+            step=0.01,
+            precision=3
+        ),
+        "fp_ridge_radius": FloatProperty(
+            name="Ridge scale",
+            description=(
+                "How far to look when deciding the 'overall direction' of a "
+                "surface, as a fraction of the object size. Smaller = thinner "
+                "lines on finer features"
+            ),
+            default=0.08,
+            min=0.005,
+            max=0.5,
+            step=0.005,
+            precision=3
+        ),
+        "fp_curve_blur_auto": BoolProperty(
+            name="Auto blur on subdivided objects",
+            description=(
+                "For objects that carry a Subdivision modifier, cut islands "
+                "at a low angle and then dissolve every boundary that is not "
+                "a sharp edge. The modelling cage stops showing up as lines "
+                "while the real creases stay"
+            ),
+            # 既定OFF。sample.blend で「ぼかし無し」と並べて比べたところ、
+            # ぼかした方が悪かった。5度で切ると極小の島が大量にでき、少ない
+            # 回数では中途半端にしか混ざらない。溶けきらない色差が破片として
+            # 残り、眉と鼻のまわりにギザギザが出る。回数を増やすと今度は
+            # 領域全体が一色に潰れる。どちらにも良い点が無い。
+            #
+            # 「4回で良くなった」と一度判断したが、比較対象が
+            # 「5度で切っただけ(切りすぎ)」であって通常動作ではなかった。
+            default=False
+        ),
+        "fp_curve_blur": IntProperty(
+            name="Curve blur",
+            description=(
+                "Smooth the paint color across low-angle edges so the mesh "
+                "grid on subdivided surfaces stops turning into lines. "
+                "Sharp edges keep their hard step (0 = off)"
+            ),
+            # 既定OFF。サブサーフのかかった曲面ではメッシュの格子が
+            # そのまま線になるが、島をまとめて消すと目や口の稜線まで
+            # 消える(実測: スザンヌで内部の線が全滅)。島は残したまま
+            # なめらかな境界の段差だけを溶かす
+            default=0,
+            min=0,
+            max=20
+        ),
+        "fp_curve_blur_angle": FloatProperty(
+            name="Curve blur angle",
+            description=(
+                "Only edges below this dihedral angle get smoothed. "
+                "Edges above it keep a hard color step, so their lines stay"
+            ),
+            default=25.0,
+            min=1.0,
+            max=90.0,
+            step=100,
+            precision=1
         ),
         "fp_color_type": EnumProperty(
             name="Vertex color type",
@@ -183,6 +289,137 @@ def register_props():
             precision=2,
             update=_update_line_tuning
         ),
+        # --- 線の強弱(入り抜き) -------------------------------------
+        # くぼみ(AO)が深いほど線を太くする。詳細と実測は line_weight.py
+        "fp_line_weight": BoolProperty(
+            name="Line weight from cavities",
+            description=(
+                "Thicken the line where the shape is recessed and thin it "
+                "where it is open, using the ambient-occlusion pass. "
+                "Needs STEP3 to be run again"
+            ),
+            # 既定OFF。既存ファイルの絵を勝手に変えない
+            default=False,
+            # 切り替えたら線のしきい値も連動させる。STEP3 をやり直す
+            # までノードは組まれないが、線の量はその場で変わる
+            update=_update_line_tuning
+        ),
+        "fp_lw_island_bias": FloatProperty(
+            name="Split less",
+            description=(
+                "While line weight is on, allow fewer islands so the mesh "
+                "is cut more coarsely. A thin rim seen edge-on stops "
+                "turning every mesh ring into its own line. "
+                "1.0 = do not change it"
+            ),
+            # 既定0.4。スザンヌで振った実測(自動の角度 -> 見え方):
+            #   1.0  10.7度  耳の縁が4本の平行線。目は二重丸
+            #   0.5  13.3度  耳はまだ3本
+            #   0.4  14.0度  耳が1本になり、目も鼻も残る  <- これ
+            #   0.32 14.6度  目の内側の輪が消える
+            #   0.25 14.9度  鼻の輪郭も消える
+            default=0.4, min=0.05, max=1.0, step=0.05, precision=2
+        ),
+        "fp_lw_line_bias": FloatProperty(
+            name="Weaken the line",
+            description=(
+                "While line weight is on, raise the line-detection "
+                "threshold by this factor so fewer, cleaner lines are "
+                "thickened. 1.0 = do not change it"
+            ),
+            # 既定1.2。はじめ1.8にしたが、「切る細かさ」と重なって効きすぎ、
+            # スザンヌの口の輪郭が消えた。両方を切り分けて実測した結果:
+            #   島1.0 線1.0  口○ 耳×(平行4本)
+            #   島0.4 線1.0  口○ 耳○
+            #   島0.4 線1.2  口○ 耳○   <- これ
+            #   島0.4 線1.4  口が欠け始める
+            #   島0.4 線1.8  口が消える
+            # メカ側は 1.8 のほうが綺麗になる(車 7.85% -> 7.38%)ので、
+            # メカ中心のカットでは手で上げる
+            default=1.2, min=1.0, max=4.0, step=0.1, precision=2,
+            update=_update_line_tuning
+        ),
+        "fp_lw_strength": FloatProperty(
+            name="Weight strength",
+            description=(
+                "Multiplier on the step widths. 1.0 = 5/4/3/2/1 px before "
+                "the 50% shrink"
+            ),
+            default=1.0, min=0.2, max=3.0, step=0.05, precision=2
+        ),
+        "fp_lw_bin": FloatProperty(
+            name="Weight binarize",
+            description=(
+                "How dark a pixel must be to count as line before "
+                "thickening. Lower = faint lines survive"
+            ),
+            # 0.25 だと薄い線を落として点線になった。0.15 で繋がる
+            default=0.15, min=0.02, max=0.8, step=0.01, precision=2
+        ),
+        "fp_lw_gain": FloatProperty(
+            name="Weight darkness",
+            description=(
+                "Lift the ink after the 50% shrink so the thin steps stay "
+                "black"
+            ),
+            default=1.4, min=1.0, max=3.0, step=0.05, precision=2
+        ),
+        "fp_lw_crowd": FloatProperty(
+            name="Keep crowded lines thin",
+            description=(
+                "Where lines are packed together, do not thicken them. "
+                "A thin rim seen edge-on turns the mesh rings into several "
+                "parallel lines that would otherwise merge into one blob. "
+                "0 = off"
+            ),
+            # 既定ON。実測でスザンヌの耳と車のグリルが黒く潰れ、
+            # 素の線より悪くなった。抑制すると潰れが解け、詰まって
+            # いない場所(キャラの輪郭など)は1画素も変わらない
+            default=1.0, min=0.0, max=1.0, step=0.05, precision=2
+        ),
+        "fp_lw_crowd_radius": IntProperty(
+            name="Crowding radius",
+            description=(
+                "How far to look when deciding that lines are packed, in "
+                "pixels of the render (before the 50% shrink)"
+            ),
+            default=10, min=1, max=40
+        ),
+        "fp_lw_crowd_threshold": FloatProperty(
+            name="Crowding threshold",
+            description=(
+                "How packed an area must be before it stops being "
+                "thickened. Lower = starts working on sparser lines"
+            ),
+            default=0.12, min=0.02, max=0.95, step=0.05, precision=2
+        ),
+        "fp_lw_ao_blur": IntProperty(
+            name="Cavity smoothing",
+            description=(
+                "Blur the cavity map before cutting it into steps. "
+                "EEVEE's AO is ray-traced and grainy; the grain turns a "
+                "single stroke into a dashed line"
+            ),
+            default=4, min=0, max=32
+        ),
+        "fp_lw_ao_dist": FloatProperty(
+            name="Cavity radius",
+            description=(
+                "How far to look when deciding how recessed a point is, in "
+                "scene units. Too small and nothing is occluded"
+            ),
+            default=0.6, min=0.01, max=20.0, step=0.05, precision=3
+        ),
+        # 段の境目。d = 1 - AO の分位点。モデルごとに15倍ひらくので
+        # 「しきい値を測る」ボタンでカットごとに入れ直す
+        **{
+            f"fp_lw_e{i}": FloatProperty(
+                name=f"Weight edge {i}",
+                description="Step boundary on 1 - AO. Measure it per cut",
+                default=d, min=0.0, max=1.0, step=0.001, precision=4
+            )
+            for i, d in enumerate((0.0019, 0.0147, 0.0453, 0.1051), start=1)
+        },
         **{
             f"fp_ch_{ch}": FloatProperty(
                 name=f"{label} strength",
@@ -247,6 +484,34 @@ def register_props():
                 "Applies to the Composite output and File Output slots"
             ),
             default=False
+        ),
+        "fp_preview_mode": EnumProperty(
+            name="Preview",
+            description=(
+                "What to show under the lines. Both work the same way: "
+                "they change what feeds the node group, so materials are "
+                "never touched"
+            ),
+            items=[
+                ('NONE', t("Materials"),
+                 t("Show the scene as it is, with lines on top")),
+                ('WHITE', t("White"),
+                 t("Flat white under the lines. Pure line art")),
+                ('MONO_LIGHT', t("Mono (diffuse light)"),
+                 t("Grey shading from the diffuse light, with lines on "
+                   "top. Texture patterns are not carried over")),
+            ],
+            default='NONE',
+            update=_update_preview_mode
+        ),
+        "fp_mono_floor": FloatProperty(
+            name="Shadow floor",
+            description=(
+                "How dark the shadows may get in mono preview. "
+                "0 crushes them to black and the lines disappear"
+            ),
+            default=0.25, min=0.0, max=0.9, step=5, precision=2,
+            update=_update_preview_mode
         ),
         "fp_white_preview": BoolProperty(
             name="White material preview",
@@ -449,15 +714,21 @@ def unregister_props():
     props_to_clear = [
         "fp_sharp_edges", "fp_sharp_auto", "fp_seam_boundaries",
         "fp_min_island_area_pct", "fp_sharp_clear",
+        "fp_ridge_amount", "fp_ridge_radius",
+        "fp_curve_blur", "fp_curve_blur_angle", "fp_curve_blur_auto",
         "fp_color_type", "fp_mat_count",
         "fp_gen_color", "fp_mask_color", "fp_line_color",
         "fp_mat_color", "fp_bone_color", "fp_enable_compositor_view",
         "fp_include_antialiasing", "fp_line_sensitivity",
+        "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain",
+        "fp_lw_ao_dist", "fp_lw_ao_blur", "fp_lw_crowd",
+        "fp_lw_crowd_radius", "fp_lw_crowd_threshold", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",
         "fp_ch_mecha", "fp_ch_depth", "fp_ch_bone", "fp_ch_gen", "fp_ch_mat",
         "fp_file_output", "fp_file_output_path",
         "fp_fo_line", "fp_fo_color", "fp_fo_light", "fp_fo_shadow",
-        "fp_white_preview", "fp_white_keep_glass", "fp_supersample",
+        "fp_white_preview", "fp_preview_mode", "fp_mono_floor",
+        "fp_white_keep_glass", "fp_supersample",
         "fp_auto_sharp", "fp_auto_seam", "fp_auto_merge", "fp_auto_part_tint",
         "fp_auto_bone", "fp_auto_aa", "fp_auto_hashed", "fp_auto_file_output",
         "fp_auto_detect_aov", "fp_auto_supersample", "fp_auto_white_preview",

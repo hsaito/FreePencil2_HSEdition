@@ -15,6 +15,22 @@ bl_info = {
 # バージョンだけ個別変数にする
 ADDON_VERSION = bl_info["version"]
 
+# 開発ビルドの通し番号。空文字ならリリース版。
+#
+# 番号を上げずに中身だけ差し替えると、画面の「v2.6.2」が同じままなので
+# 新旧の区別がつかない。実際、8月16日に起動したままの Blender が古い
+# コードを保持していたのに、パネルの表示が最新と同じで気づけなかった。
+#
+# scripts/stamp_dev.py が YYYYMMDD+通し番号(3桁)を書き込み、
+# scripts/install_all.py --release が空に戻す。
+DEV_BUILD = "20260908002"
+
+
+def version_label() -> str:
+    """画面に出す版名。開発ビルドなら通し番号を付ける。"""
+    base = ".".join(map(str, ADDON_VERSION))
+    return f"{base}_{DEV_BUILD}" if DEV_BUILD else base
+
 import bpy
 import typing
 import inspect

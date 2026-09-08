@@ -15,6 +15,28 @@ from mathutils import Vector
 from . import mesh_islands
 from . import utils
 
+# パレットの上限。実際の色数は palette_for_diversity が距離・輝度差の契約を
+# 見て決めるので、既定の輝度窓では5色前後で頭打ちになる。窓を広げた
+# パーツ・トーン分けのときに、もう少し取れる余地を残すための上限
+PALETTE_SIZE = 16
+
+# サブディビジョンが生きているオブジェクトの扱い。
+#
+# STEP1 が見ているのは、なめらかな形を作るための粗いケージ。ケージの角は
+# 二面角が大きくてもレンダリングでは丸くなるので、そこに線が出てはいけない。
+# 角度を一発で当てにいく方式は面の細かさで分位点が動くため破綻する
+# (プリミティブ8種の実測で、サブディブ適用済みは全部45度未満に落ちた)。
+#
+# そこで低い角度で切って構造を取りこぼさないようにしたうえで、
+# **ケージ由来の鋭角をぼかす**。クリースの付いた辺だけは作者が
+# 「丸めない」と指定したものなので、ぼかさずに残す。
+CURVE_CUT_DEG = 5.0        # 構造を取りこぼさない低い角度
+# ぼかす回数。拡散なので回しすぎると領域全体が一色に潰れる(実測: 20回で
+# 頭部が灰色一色になった)。sample.blend で1〜6回を撮って比べ、
+# 4回でケージの格子が消えて造形だけが残った。6回も同じ絵だったので、
+# ここで頭打ちになる
+CURVE_BLUR_ITERS = 4
+
 logger = logging.getLogger(__name__)
 
 # シード上限（Blender IntProperty は符号付き32bit のため 2^31-1 に収める）
@@ -287,6 +309,11 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
         color_noise_scale = getattr(scene, "fp_color_noise_scale", default_noise_scale)
         min_neighbor_color_distance = getattr(scene, "fp_min_neighbor_color_distance", 0.5)
         max_color_generation_retries = getattr(scene, "fp_max_color_retries", 30)
+        ridge_amount = getattr(scene, "fp_ridge_amount", 0.0)
+        ridge_radius = getattr(scene, "fp_ridge_radius", 0.08)
+        curve_blur = getattr(scene, "fp_curve_blur", 0)
+        curve_blur_deg = getattr(scene, "fp_curve_blur_angle", 25.0)
+        curve_blur_auto = getattr(scene, "fp_curve_blur_auto", True)
         angle_threshold_rad = math.radians(scene.fp_sharp_edges)
         clear_sharps_option = scene.fp_sharp_clear # UIの「シャープを削除」オプション
         # UVシーム/マテリアル境界を島境界として使う(アーティストの意図情報)
@@ -415,6 +442,12 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # --- 0. 自動しきい値: 二面角の分布からモデル系統を判定 ---
                 effective_threshold_rad = angle_threshold_rad
                 auto_merge_pct = None
+                # サブディビジョンが生きていると、STEP1 が見ているのは
+                # なめらかな形を作るための粗いケージ。塗った色はサブディブ
+                # で補間されてから描かれる
+                has_subsurf = any(m.type == 'SUBSURF' and m.show_viewport
+                                  for m in obj.modifiers)
+                obj_blur = curve_blur
                 if getattr(scene, "fp_sharp_auto", False):
                     angle_samples = topo.angle_samples_deg()
                     # リグ付きモデルは bone_color が線の主役なので保守的に
@@ -422,11 +455,29 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                                   for m in obj.modifiers)
                     auto_deg, auto_merge_pct = utils.choose_auto_threshold(
                         angle_samples, has_armature=has_arm,
-                        many_parts=many_loose_parts)
+                        many_parts=many_loose_parts, has_subsurf=has_subsurf)
+                    # サブディビジョン付きは「低い角度で切ってから、鋭角以外を
+                    # 溶かす」方式に切り替える。
+                    #
+                    # 角度を一発で当てにいく方式は面の細かさで分位点が動くため
+                    # 破綻する(プリミティブ8種で、適用済みは全部45度未満に
+                    # 落ちた)。低く切れば構造を取りこぼさず、溶かせばケージの
+                    # 格子は消える。残るのは鋭角だけ。
+                    #
+                    # 実測(sample.blend): 自動60度だとスザンヌは輪郭と目だけ。
+                    # この方式だと眉・鼻・口・耳と頭部の面の切り替わりが出た。
+                    # ぼかさない素のメッシュに使うとポリゴンの角が残るので、
+                    # サブディビジョンがある側だけに限る。
+                    if has_subsurf and curve_blur_auto:
+                        auto_deg = CURVE_CUT_DEG
+                        obj_blur = (curve_blur if curve_blur > 0
+                                    else CURVE_BLUR_ITERS)
                     effective_threshold_rad = math.radians(auto_deg)
                     print(f"[FreePencil] auto sharp threshold for '{obj.name}': "
                           f"{auto_deg:.1f} deg"
-                          + (f", merge {auto_merge_pct}%" if auto_merge_pct else ""))
+                          + (f", merge {auto_merge_pct}%" if auto_merge_pct else "")
+                          + (f", subsurf -> blur {obj_blur}" if obj_blur
+                             and has_subsurf else ""))
 
                 # --- 1. 島境界エッジの判定 ---
                 # メッシュには書き込まない。以前は edge.smooth を書き換えて
@@ -434,10 +485,56 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # 復元漏れの温床だった。アーティストの意図は Freestyle
                 # マークではなく「シャープ」で受け取る(実測でマークは
                 # 使われておらず、5.x では属性ごと消えているため)。
-                topo.mark_boundaries(effective_threshold_rad,
-                                     seam_boundaries_option,
-                                     clear_sharps_option)
+                if getattr(scene, "fp_sharp_auto", False):
+                    # 自動のときは切った結果を見て閾値を詰める。
+                    # 分布から系統を当てる方式だけでは、実測で 39モデル中
+                    # 9モデルが網目状に砕けていた
+                    # 線の強弱がONのときは、切る細かさの上限を下げる。
+                    # 強弱は線を太らせるので、細かく切れた分だけ絵が
+                    # 重くなる。詳細は line_weight.island_ratio
+                    from . import line_weight
+                    used_deg, tries, ratio = mesh_islands.resolve_threshold(
+                        topo, math.degrees(effective_threshold_rad),
+                        seam_boundaries_option, clear_sharps_option,
+                        max_ratio=line_weight.island_ratio(
+                            scene, mesh_islands.MAX_ISLANDS_PER_FACE))
+                    if tries > 1:
+                        print(f"[FreePencil] '{obj.name}': island ratio too "
+                              f"high, raised to {used_deg:.1f} deg "
+                              f"({tries} tries, {ratio:.4f} islands/face)")
+                    effective_threshold_rad = math.radians(used_deg)
 
+                    # 上げるだけでは、多数派の角度に隠れた少数派を拾えない。
+                    # 実測(sample2の面取りした箱、10面): 二面角は
+                    # 90度x8 / 79度x4 / 64度x4 / 25.6度x4 で、p95 が 90度に
+                    # なるため 60度が選ばれ、緩い斜面の 25.6度 が消えていた。
+                    # 下げても島が増えすぎないなら下げる
+                    #
+                    # リグ付きと多パーツ組立は対象外。どちらも「人工分割を
+                    # しない」ことが既存の設計で、線の主役はボーン境界と
+                    # パーツ間のシルエットにある。ここを下げると、そのために
+                    # 置いたガードを素通しして細片が出る(t20/t24/t25 が落ちた)
+                    if not (has_subsurf and curve_blur_auto) \
+                            and not has_arm and not many_loose_parts:
+                        n_parts = utils.count_loose_parts(obj.data)
+                        low_deg, low_n = mesh_islands.lower_threshold_for_detail(
+                            topo, n_parts, seam_boundaries_option,
+                            clear_sharps_option)
+                        if low_deg is not None and low_deg < used_deg - 0.5:
+                            print(f"[FreePencil] '{obj.name}': lowered "
+                                  f"{used_deg:.1f} -> {low_deg:.1f} deg "
+                                  f"({low_n} islands / {n_parts} parts)")
+                            used_deg = low_deg
+                            effective_threshold_rad = math.radians(used_deg)
+                        topo.mark_boundaries(effective_threshold_rad,
+                                             seam_boundaries_option,
+                                             clear_sharps_option)
+                        topo.build_islands()
+                else:
+                    topo.mark_boundaries(effective_threshold_rad,
+                                         seam_boundaries_option,
+                                         clear_sharps_option)
+                    topo.build_islands()
 
                 # --- 2. 島の検出 ---
                 # 以降のフェーズは単一の高密度メッシュだと各数秒〜十数秒
@@ -446,8 +543,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 if fine_progress:
                     yield i + 0.15, n_objs, f"{obj.name} - " + \
                         bpy.app.translations.pgettext("Detecting islands")
-                topo.build_islands()
-                islands = topo.islands
+                islands = topo.islands   # 上で切り終えている
 
                 # --- 2.5 微小島のマージ ---
                 # 面積がメッシュ全体の一定割合未満の島は線として視認できず、
@@ -476,6 +572,12 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # 「隣接なし」と判定されて同じ色クラスになり境界線が消える。
                 # だから隣接も島境界エッジ越しだけを見る
                 island_neighbors = topo.island_adjacency(boundary_only=True)
+                # 辺で繋がっていない島(別のルースパーツ)は上の判定では
+                # 「隣接なし」になり、貪欲彩色が全部を同じクラスに置く。
+                # 画面では重なっているのに境界の色差がゼロになるので、
+                # 近接しているルースパーツ同士を隣として足す
+                n_prox = mesh_islands.add_loose_part_proximity(
+                    topo, obj.data, island_neighbors)
                 island_classes = utils.color_graph_greedy(island_neighbors)
                 n_classes = (max(island_classes) + 1) if island_classes else 1
                 # パーツ・トーン分け: 明度「窓」をパーツごとにずらして
@@ -486,9 +588,25 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # (utils.part_luma_window に理由と実測値)。
                 obj_part_class = part_tint.get(obj.name, 0)
                 luma_lo, luma_hi = utils.part_luma_window(obj_part_class)
-                palette, palette_min_dist, palette_min_luma = utils.build_palette(
-                    n_classes, master_operation_seed_int,
-                    luma_lo=luma_lo, luma_hi=luma_hi)
+                # 彩色数ぶんしか色を作らないと、島同士がメッシュで繋がって
+                # いない形(文字など)で色が足りない。実測: "Text" は124島でも
+                # 彩色数2、自動しきい値だと1で、全部が同じ黄色になっていた。
+                # 契約(距離・輝度差)を守れる範囲で色数を増やす
+                palette, palette_min_dist, palette_min_luma = \
+                    utils.palette_for_diversity(
+                        min_neighbor_color_distance,
+                        min(len(islands), PALETTE_SIZE),
+                        master_operation_seed_int, min_k=n_classes,
+                        luma_lo=luma_lo, luma_hi=luma_hi)
+                # 従来の割り当てを出発点に、制約を壊さない範囲でだけ散らす
+                island_classes, n_used = utils.diversify_island_colors(
+                    island_neighbors, island_classes, palette,
+                    min_neighbor_color_distance)
+                if len(palette) > n_classes or n_prox:
+                    print(f"[FreePencil] '{obj.name}': 島{len(islands)} "
+                          f"近接隣接{n_prox} "
+                          f"彩色数{n_classes} -> パレット{len(palette)} "
+                          f"使った色{n_used}")
 
                 # 隣接距離と輝度差(=線の検出性)の保証を壊さない範囲で
                 # 島ごとに色を揺らす
@@ -540,10 +658,59 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # topo は普通の numpy 配列なので GC に任せる
                 pass
 
+            # 頂点カラーのぼかし。
+            #
+            # サブディビジョンがかかっていると、ケージの角は二面角が大きくても
+            # レンダリングでは丸くなる。角度で「鋭角」と判定された辺こそが
+            # 誤判定なので、そこに線を出してはいけない。残すべきなのは作者が
+            # 明示した辺(クリース/シャープ)だけ。それ以外は角度に関係なく
+            # 色の段差を溶かす。
+            #
+            # 手動でぼかし回数を指定した場合(サブディビジョン無し)は、
+            # 従来どおり二面角のしきい値で判断する
+            if obj_blur > 0 and topo is not None:
+                cols = np.stack([final_face_colors_r, final_face_colors_g,
+                                 final_face_colors_b], axis=1)
+                if has_subsurf and curve_blur_auto:
+                    barrier = topo.sharp | (topo.crease > 0.0)
+                    n_keep = int((barrier & topo.two_face).sum())
+                    cols = topo.smooth_face_colors(cols, obj_blur,
+                                                   barrier=barrier)
+                    print(f"[FreePencil] '{obj.name}': 頂点カラーぼかし "
+                          f"{obj_blur}回 / 残した辺(クリース・シャープ) "
+                          f"{n_keep:,}本")
+                else:
+                    n_soft = int((topo.two_face & ~np.isnan(topo.angle)
+                                  & (topo.angle < math.radians(curve_blur_deg))
+                                  ).sum())
+                    cols = topo.smooth_face_colors(
+                        cols, obj_blur, angle_rad=math.radians(curve_blur_deg))
+                    print(f"[FreePencil] '{obj.name}': 頂点カラーぼかし "
+                          f"{obj_blur}回 / {curve_blur_deg:.0f}度未満の辺 "
+                          f"{n_soft:,}本")
+                final_face_colors_r = np.ascontiguousarray(cols[:, 0])
+                final_face_colors_g = np.ascontiguousarray(cols[:, 1])
+                final_face_colors_b = np.ascontiguousarray(cols[:, 2])
+
+            # 稜線の起伏。島は面の縁でしか色を変えられないので、なめらかな
+            # 出っ張り(まぶたの上など)に線が出せない。法線から「大きな向き」
+            # を引いた残りを島の中に薄く足して、そこだけ色を動かす。
+            # 平らな面では残差がほぼゼロなので、メカには何も足されない
+            ridge_offset = None
+            if ridge_amount > 0.0:
+                got = mesh_islands.ridge_residual(obj.data, ridge_radius)
+                if got is not None:
+                    d, n_iter = got
+                    ridge_offset = d * ridge_amount
+                    print(f"[FreePencil] '{obj.name}': 稜線の起伏 "
+                          f"{ridge_amount:.2f} 距離{ridge_radius:.3f} "
+                          f"(均し{n_iter}回) 最大ズレ"
+                          f"{float(np.abs(ridge_offset).max()):.3f}")
+
             if obj.mode != 'OBJECT': bpy.ops.object.mode_set(mode='OBJECT')
             yield i + 0.85, n_objs, f"{obj.name} - " + \
                 bpy.app.translations.pgettext("Writing vertex colors")
-            utils.apply_face_colors(obj, mecha_color_index, final_face_colors_r, final_face_colors_g, final_face_colors_b)
+            utils.apply_face_colors(obj, mecha_color_index, final_face_colors_r, final_face_colors_g, final_face_colors_b, ridge_offset)
 
             # --- Bone color generation ---
             armature_mod = next((m for m in obj.modifiers

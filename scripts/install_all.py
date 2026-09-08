@@ -3,9 +3,14 @@
 アドオンを直すたびに必ず走らせる。実機に反映しないまま「直った」と
 言わないための手順。
 
-  python scripts\\install_all.py            # ビルド -> 全バージョンへ導入 -> 検証
+  python scripts\\install_all.py            # 採番 -> ビルド -> 全版へ導入 -> 検証
   python scripts\\install_all.py --no-build # 既存の dist を使う
   python scripts\\install_all.py --test     # 導入後にスモークテストも回す
+  python scripts\\install_all.py --release  # 通し番号を外して配布版を作る
+
+導入のたびに開発ビルドの通し番号(DEV_BUILD)を進める。パネルの表題が
+「FreePencil v2.6.2_20260817001」になるので、実機に入っているものが
+新しいかどうかが一目で分かる。--release で番号は外れる。
 
 注意:
 - `--factory-startup` は使わない。使うと有効化がプリファレンスに残らず、
@@ -21,9 +26,12 @@ import json
 import re
 import subprocess
 import sys
+from datetime import date as _date
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+REPO = SCRIPTS.parent
 DIST = REPO / "dist"
 BLENDER_ROOT = Path(r"C:\blender")
 # 対応する下限。これ未満は入れても動かない
@@ -172,7 +180,20 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--no-build", action="store_true")
     p.add_argument("--test", action="store_true")
+    p.add_argument("--release", action="store_true",
+                   help="開発ビルドの通し番号を外して配布版として作る")
     args = p.parse_args()
+
+    # 通し番号は ZIP を作る前に書き換える。--no-build のときは既存の
+    # ZIP を使うので触らない(中身と表示がずれるため)
+    if not args.no_build:
+        import stamp_dev
+        if args.release:
+            stamp_dev.write("")
+            print("[dev] リリース版(通し番号なし)")
+        else:
+            stamp_dev.write(stamp_dev.next_number(_date.today()))
+            print(f"[dev] 開発ビルド {stamp_dev.current()}")
 
     blenders = find_blenders()
     if not blenders:
@@ -229,7 +250,10 @@ def main() -> None:
 
     if failed:
         raise SystemExit(f"失敗: {failed}")
-    print("[done] 全バージョンへ導入・有効化・保存まで完了")
+    import stamp_dev
+    cur = stamp_dev.current()
+    print("[done] 全バージョンへ導入・有効化・保存まで完了"
+          + (f"  開発ビルド {cur}" if cur else "  リリース版"))
 
 
 if __name__ == "__main__":

@@ -1303,9 +1303,16 @@ def t32():
         f'manifest blender_version_min={vmin} '
         f'!= bl_info blender={freepencil2.bl_info["blender"]}')
 
-    # パネル見出しに出る文字列も同じ番号であること
+    # パネル見出しに出る文字列も同じ番号であること。
+    # 開発ビルドでは番号の後ろに _YYYYMMDD+3桁 が付く
+    # (scripts/stamp_dev.py が打ち、--release で外れる)。
+    # 番号を上げずに中身だけ差し替えると新旧の区別がつかないので入れた。
     label = bpy.types.FREEPENCIL_PT_LINE.bl_label
-    assert label.endswith(".".join(map(str, ver))), label
+    base = ".".join(map(str, ver))
+    dev = getattr(freepencil2, "DEV_BUILD", "")
+    assert label.endswith(f"{base}_{dev}" if dev else base), label
+    if dev:
+        assert re.fullmatch(r"\d{11}", dev), f"開発番号の形式が違う: {dev}"
 
 
 @test("viewport preview is skipped where AOVs are not evaluated (4.2)")
@@ -1623,6 +1630,154 @@ def t39():
     finally:
         bpy.ops.wm.read_homefile(use_empty=True)
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+@test("loose parts get different colors even without shared edges")
+def t40():
+    """離れたパーツ同士が同じ色にならないこと。
+
+    島の隣接はメッシュの境界エッジ越しにしか見ていないので、辺を1本も
+    共有しないルースパーツは「隣接なし」になり、貪欲彩色が全部を同じ
+    クラスに置いていた。画面では重なっているのに境界の色差がゼロになる。
+    2026-08-09 の「違反0件」誤報と同じ穴なので、テストで塞ぐ。
+    """
+    import numpy as np
+
+    from freepencil2 import mesh_islands
+
+    # 触れ合わない距離に置いた球3個を1メッシュにする。
+    # 立方体だと 90度の辺が切られて1個が6島になり「パーツ=1色」に
+    # ならないので、60度では1島にまとまる球を使う
+    bpy.ops.wm.read_homefile(use_empty=True)
+    objs = []
+    for loc in ((0, 0, 0), (2.2, 0, 0), (0, 2.2, 0)):
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=loc)
+        objs.append(bpy.context.object)
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.object.join()
+    obj = bpy.context.object
+
+    me = obj.data
+    topo = mesh_islands.MeshTopology(me)
+    topo.mark_boundaries(np.radians(60.0), False, False)
+    topo.build_islands()
+    assert len(topo.islands) == 3, (
+        f"球3個が3島にならない: {len(topo.islands)}")
+    nbrs = topo.island_adjacency(boundary_only=True)
+    before = sum(len(n) for n in nbrs)
+    added = mesh_islands.add_loose_part_proximity(topo, me, nbrs)
+    assert added > 0, "近接している別パーツが1組も隣接にならなかった"
+    assert sum(len(n) for n in nbrs) > before
+
+    # 実際に塗ってみて、パーツごとの色が全部違うこと
+    scene = bpy.context.scene
+    scene.fp_use_random_seed = False
+    scene.fp_color_seed = 42
+    scene.fp_sharp_auto = False
+    scene.fp_sharp_edges = 60.0
+    scene.fp_min_island_area_pct = 0.0
+    bpy.ops.freepencil.auto_vertex_color("EXEC_DEFAULT")
+    cols = np.asarray(get_mecha_colors(obj), dtype=np.float64)
+    starts = np.empty(len(me.polygons), dtype=np.int32)
+    me.polygons.foreach_get("loop_start", starts)
+    face_col = cols[starts]
+    ev = np.empty(len(me.edges) * 2, dtype=np.int32)
+    me.edges.foreach_get("vertices", ev)
+    ev = ev.reshape(-1, 2)
+    lab = mesh_islands.connected_components(ev[:, 0], ev[:, 1],
+                                            len(me.vertices))
+    lv = np.empty(len(me.loops), dtype=np.int32)
+    me.loops.foreach_get("vertex_index", lv)
+    part = lab[lv[starts]]
+    reps = [face_col[part == p][0] for p in np.unique(part)]
+    assert len(reps) == 3, f"パーツが3個に分かれていない: {len(reps)}"
+    for i in range(len(reps)):
+        for j in range(i + 1, len(reps)):
+            d = float(np.linalg.norm(reps[i][:3] - reps[j][:3]))
+            assert d > 0.05, (
+                f"パーツ {i} と {j} の色が近すぎる: 距離 {d:.3f}")
+
+
+@test("ridge relief is zero on flat panels and non-zero on a curved ridge")
+def t41():
+    """稜線の起伏が「硬い面には足さず、曲面の稜線にだけ足す」こと。
+
+    法線から距離Rぶん均した「大きな向き」を引いた残りを使うので、
+    平らな面では 法線 ≒ 均した法線 で残差がゼロになる。これが崩れると
+    メカにも起伏が乗ってしまい、モード判定なしで両立する前提が壊れる。
+    """
+    import numpy as np
+
+    from freepencil2 import mesh_islands
+
+    # 平らな面だけの形
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_cube_add(size=2.0)
+    flat = bpy.context.object
+    bpy.ops.object.shade_smooth()
+    got = mesh_islands.ridge_residual(flat.data, 0.08)
+    flat_max = 0.0 if got is None else float(np.abs(got[0]).max())
+
+    # なめらかな出っ張りのある形
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_monkey_add()
+    o = bpy.context.object
+    m = o.modifiers.new("S", type="SUBSURF")
+    m.levels = m.render_levels = 2
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    bpy.ops.object.shade_smooth()
+    got = mesh_islands.ridge_residual(o.data, 0.08)
+    assert got is not None, "曲面で残差が計算できていない"
+    curved_max = float(np.abs(got[0]).max())
+
+    assert curved_max > 0.2, f"曲面の稜線で残差が小さすぎる: {curved_max:.3f}"
+    assert flat_max < curved_max * 0.25, (
+        f"平面にも残差が乗っている: 平面 {flat_max:.3f} / 曲面 {curved_max:.3f}")
+
+
+@test("auto threshold lowers to catch a gentle slope the percentile hides")
+def t42():
+    """多数派の角度に隠れた少数派を拾えること。
+
+    面取りした箱の二面角は 90度x8 / 79度x4 / 64度x4 / 25.6度x4。
+    p95 が 90度になるため `p95>75 -> 60度` の枝に落ち、緩い斜面の
+    25.6度が切られずに線が消えていた(sample2 で発覚)。
+    下げても島が増えすぎないなら下げる、という規則で拾い直す。
+
+    同時に、なめらかなハイポリでは下げないことも固定する。
+    5〜10度まで落ちるとメッシュの格子が線になるため。
+    """
+    import numpy as np
+
+    from freepencil2 import mesh_islands
+
+    # 上面のまわりを面取りした箱を作る
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_cube_add(size=2.0)
+    obj = bpy.context.object
+    bev = obj.modifiers.new("B", type="BEVEL")
+    bev.width = 0.35
+    bev.segments = 1
+    bev.affect = 'EDGES'
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.modifier_apply(modifier=bev.name)
+
+    topo = mesh_islands.MeshTopology(obj.data)
+    deg, n = mesh_islands.lower_threshold_for_detail(topo, 1, False, False)
+    assert deg is not None and deg <= 40.0, (
+        f"面取りした箱で角度が下がらない: {deg}")
+
+    # なめらかなハイポリは下げない(格子が出る側)
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=64, ring_count=32)
+    sphere = bpy.context.object
+    topo = mesh_islands.MeshTopology(sphere.data)
+    deg_s, n_s = mesh_islands.lower_threshold_for_detail(topo, 1, False, False)
+    assert n_s <= 20, f"球が細かく割れた: {n_s}島"
 
 
 def main():
