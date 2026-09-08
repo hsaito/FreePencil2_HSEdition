@@ -177,7 +177,6 @@ def main() -> None:
     place(dist, 0.0)
     shoot(sc, place, dist, "off")
 
-    sc.fp_lw_ao_dist = r * 0.6
     sc.fp_line_weight = True
     # 島を切る細かさは STEP1 で決まる。強弱をONにしてから STEP0 を
     # やり直さないと反映されない

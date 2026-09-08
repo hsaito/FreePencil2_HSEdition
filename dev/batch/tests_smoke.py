@@ -1783,6 +1783,105 @@ def t42():
     assert n_s <= 20, f"球が細かく割れた: {n_s}島"
 
 
+def _lw_scene(scale=1.0):
+    """線の強弱を試すための最小シーン。スザンヌ1体とカメラと1灯。"""
+    import math
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_monkey_add()
+    obj = bpy.context.object
+    obj.scale = (scale,) * 3
+    bpy.ops.object.transform_apply(scale=True)
+    scene = bpy.context.scene
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.location = (0, -6 * scale, 0)
+    cam.rotation_euler = (math.radians(90), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.fp_use_random_seed = False
+    scene.fp_color_seed = 7
+    scene.fp_enable_compositor_view = False
+    scene.fp_auto_detect_aov = False
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    return scene, obj
+
+
+def _lw_node_count(scene):
+    from freepencil2 import compat, line_weight
+    tree = compat.get_compositor_tree(scene)
+    if tree is None:
+        return 0
+    return sum(1 for n in tree.nodes if n.label == line_weight.NODE_LABEL)
+
+
+@test("line weight adds nothing while it is off, and is idempotent when on")
+def t43():
+    # 既定OFF のときに1ノードでも増えると、既存ファイルの絵が変わる
+    scene, _ = _lw_scene()
+    scene.fp_line_weight = False
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    assert _lw_node_count(scene) == 0, "OFF なのに強弱ノードが入った"
+
+    scene.fp_line_weight = True
+    bpy.ops.freepencil2.link_button()
+    first = _lw_node_count(scene)
+    assert first > 0, "ON にしても強弱ノードが入らない"
+    # STEP3 を繰り返しても増えないこと。増えるならノードが二重に挿さる
+    bpy.ops.freepencil2.link_button()
+    bpy.ops.freepencil2.link_button()
+    assert _lw_node_count(scene) == first, (
+        f"STEP3 のたびに強弱ノードが増える: {first} -> {_lw_node_count(scene)}")
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("line weight step widths follow the render percentage")
+def t44():
+    # 段の太さは「200%でレンダして50%に縮小」を前提にした値。細線化を
+    # 切ると縮小が無くなるので、そのままでは線が太くなりすぎる
+    from freepencil2 import line_weight
+    scene, _ = _lw_scene()
+    scene.fp_lw_strength = 1.0
+    scene.render.resolution_percentage = 200
+    big = line_weight.levels_from_scene(scene)
+    scene.render.resolution_percentage = 100
+    small = line_weight.levels_from_scene(scene)
+    assert big == list(line_weight.LEVELS), f"200% で素の値と違う: {big}"
+    assert sum(small) < sum(big), (
+        f"細線化OFF でも同じ太さのまま: {small} vs {big}")
+    assert min(small) >= 1, f"1px を割った: {small}"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("cavity radius scales with the scene, not in absolute units")
+def t45():
+    # 絶対値にしていたら、10倍の大きさのモデルで何も遮蔽されず
+    # 強弱が付かなかった
+    from freepencil2 import line_weight
+    scene, _ = _lw_scene(scale=1.0)
+    r1 = line_weight.scene_radius(scene)
+    bpy.ops.wm.read_homefile(use_empty=True)
+    scene, _ = _lw_scene(scale=10.0)
+    r10 = line_weight.scene_radius(scene)
+    assert r10 > r1 * 5, f"シーンの大きさに追従していない: {r1} -> {r10}"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("measuring line weight thresholds leaves no temp folder behind")
+def t46():
+    # 測るたびに temp が残っていた
+    import tempfile
+    from freepencil2 import line_weight
+    scene, _ = _lw_scene()
+    scene.fp_line_weight = True
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    root = Path(tempfile.gettempdir())
+    before = set(root.glob("fp_lw_*"))
+    line_weight.measure_edges(scene, bpy.context.view_layer, percent=10)
+    after = set(root.glob("fp_lw_*"))
+    assert after <= before, f"一時ディレクトリが残った: {sorted(after - before)}"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

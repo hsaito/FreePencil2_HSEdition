@@ -127,7 +127,6 @@ def setup(weight: bool):
     sc.fp_white_preview = True
     sc.fp_auto_supersample = False
     sc.fp_line_weight = weight
-    sc.fp_lw_ao_dist = r * 0.6
     bpy.ops.object.select_all(action="DESELECT")
     for o in meshes:
         o.select_set(True)

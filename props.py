@@ -423,10 +423,17 @@ def register_props():
         "fp_lw_ao_dist": FloatProperty(
             name="Cavity radius",
             description=(
-                "How far to look when deciding how recessed a point is, in "
-                "scene units. Too small and nothing is occluded"
+                "How far to look when deciding how recessed a point is, "
+                "as a fraction of the scene size. Not in scene units: an "
+                "absolute value stops working as soon as the model is "
+                "bigger or smaller"
             ),
-            default=0.6, min=0.01, max=20.0, step=0.05, precision=3
+            # シーン単位の絶対値にしていたら、大きいモデルで効かなかった。
+            # 実測(既定0.6のまま、段の境目の幅):
+            #   スザンヌ等倍(半径1.82)  0.031  効く
+            #   10倍(半径18.2)          0.0039 ほぼ効かない
+            #   0.1倍(半径0.18)         0.051  効く
+            default=0.6, min=0.01, max=4.0, step=0.05, precision=3
         ),
         # 段の境目。d = 1 - AO の分位点。モデルごとに15倍ひらくので
         # 「しきい値を測る」ボタンでカットごとに入れ直す

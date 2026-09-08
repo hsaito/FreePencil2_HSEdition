@@ -116,10 +116,6 @@ def main() -> None:
     bpy.context.view_layer.objects.active = meshes[0]
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
 
-    # くぼみの半径だけはモデルの大きさに合わせておく。
-    # 既定 0.6 は「半径1くらいのモデル」を想定した値なので、
-    # 大きいモデルだと何も遮蔽されず強弱が付かない
-    sc.fp_lw_ao_dist = r * 0.6
 
     dst = OUT / "tryout.blend"
     bpy.ops.wm.save_as_mainfile(filepath=str(dst))

@@ -31,6 +31,7 @@ d = 1 - AO」の20%点を測ると 0.0013〜0.0193 と15倍ひらいた。ぼか
 """
 
 import os
+import shutil
 import tempfile
 
 import bpy
@@ -93,9 +94,16 @@ def edges_from_scene(scene) -> list:
 
 
 def levels_from_scene(scene) -> list:
-    """段ごとの太さ。強さの倍率をかけ、1px 以上に丸める。"""
-    s = getattr(scene, "fp_lw_strength", 1.0)
-    return [max(1, round(px * s)) for px in LEVELS]
+    """段ごとの太さ。強さの倍率とレンダー倍率をかけ、1px 以上に丸める。
+
+    LEVELS は「200%でレンダして50%に縮小する」細線化を前提にした値。
+    細線化を切ると縮小が無くなるので、そのままでは線が太くなりすぎる
+    (実測、同じ最終サイズで インク 0.367% -> 2.892%)。レンダー倍率で
+    割って、どちらでも同じ太さになるようにする。
+    """
+    mul = getattr(scene, "fp_lw_strength", 1.0)
+    pct = max(1, getattr(scene.render, "resolution_percentage", 100))
+    return [max(1, round(px * mul * pct / 200.0)) for px in LEVELS]
 
 
 # 計算ノードの識別子。5.x で CompositorNodeMath が無くなり、
@@ -326,15 +334,34 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200):
     return out.outputs[0]
 
 
+def scene_radius(scene) -> float:
+    """レンダーに写るメッシュを囲む半径。くぼみの半径の基準にする。"""
+    from mathutils import Vector
+    pts = []
+    for o in scene.objects:
+        if o.type != "MESH" or o.hide_render:
+            continue
+        for c in o.bound_box:
+            pts.append(o.matrix_world @ Vector(c))
+    if not pts:
+        return 1.0
+    center = Vector((sum(p.x for p in pts) / len(pts),
+                     sum(p.y for p in pts) / len(pts),
+                     sum(p.z for p in pts) / len(pts)))
+    return max(1e-4, max((p - center).length for p in pts))
+
+
 def ensure_ao_pass(scene, view_layer):
     """AO パスと、その半径を用意する。
 
-    半径はシーンの大きさに比例させる。固定にすると、大きい建物では
-    何も遮蔽されず AO が真っ白になり、強弱が全く付かない。
+    半径は「シーンの大きさに対する割合」で持つ。シーン単位の絶対値に
+    していたら、大きいモデルで何も遮蔽されず強弱が付かなかった
+    (実測、既定0.6のまま: スザンヌ等倍は段の幅0.031で効くが、10倍に
+    すると 0.0039 でほぼ効かない)。
     """
     view_layer.use_pass_ambient_occlusion = True
     ee = scene.eevee
-    r = getattr(scene, "fp_lw_ao_dist", 0.6)
+    r = getattr(scene, "fp_lw_ao_dist", 0.6) * scene_radius(scene)
     if hasattr(ee, "use_gtao"):
         ee.use_gtao = True
     # 4.5 は gtao_distance、5.x は fast_gi_distance。名前が変わった
@@ -487,6 +514,8 @@ def measure_edges(scene, view_layer, percent=25):
     finally:
         tree.nodes.remove(fo)
         scene.render.resolution_percentage = keep_pct
+        # 測るたびに temp が残っていた
+        shutil.rmtree(tmp, ignore_errors=True)
 
     if ao.shape != ln.shape or ao.shape != al.shape:
         return None

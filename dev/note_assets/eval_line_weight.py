@@ -193,8 +193,6 @@ def main() -> None:
     fp_batch.render_still(sc, OUT / "off.png", 2)
     say("off.png")
 
-    # くぼみの半径はモデルの大きさに合わせる
-    sc.fp_lw_ao_dist = r * 0.6
     sc.fp_lw_strength = STRENGTH
     if CROWD is not None:
         sc.fp_lw_crowd = float(CROWD)
