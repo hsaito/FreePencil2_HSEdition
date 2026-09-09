@@ -11,6 +11,7 @@ import bpy
 from . import compat
 from . import line_weight
 from . import node_layout
+from . import render_size
 from . import utils_nodegroup
 from .utils_nodes import insert_antialiasing_if_needed
 
@@ -787,7 +788,14 @@ def setup_compositor(scene: bpy.types.Scene,
             tree.links.new(src, sc.inputs[0])
             tree.links.new(sc.outputs[0], to_socket)
 
+        # Composite に入る1本だけ目印を付ける。F12 のときはこれを外して
+        # 等倍で出す(render_size)。ファイル出力側は 0.5 のままにしないと
+        # STEP5 が2倍で出る(テスト t39)
+        before = {n.name for n in tree.nodes if n.type == 'SCALE'}
         _insert_half_scale(comp.inputs[0])
+        for node in tree.nodes:
+            if node.type == 'SCALE' and node.name not in before:
+                render_size.mark_composite_scale(node)
         for node in tree.nodes:
             if node.type == 'OUTPUT_FILE':
                 for sock in node.inputs:

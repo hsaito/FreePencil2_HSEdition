@@ -1882,6 +1882,80 @@ def t46():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("F12 fills the frame while thinning is on, and file output stays final size")
+def t47():
+    # 細線化はコンポジタの中で 0.5 に縮めるので、そのままだと F12 が
+    # 「2倍のキャンバスに半分の大きさの絵」になっていた。実測(1920指定):
+    #   細線化OFF 1920x1080 被写体幅1236 / ON 3840x2160 被写体幅1236
+    # レンダーの間だけ Composite 側の縮小を外して、等倍で出す
+    import math
+    import tempfile
+    from freepencil2 import compat, render_size
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_monkey_add()
+    obj = bpy.context.object
+    scene = bpy.context.scene
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.location = (0, -6, 0)
+    cam.rotation_euler = (math.radians(90), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.fp_use_random_seed = False
+    scene.fp_color_seed = 3
+    scene.fp_enable_compositor_view = False
+    scene.fp_auto_detect_aov = False
+    scene.fp_supersample = True
+    # ファイル出力も出しておく。目印がそちらへ回ると STEP5 が2倍になる
+    scene.fp_file_output = True
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    scene.render.resolution_x = 64
+    scene.render.resolution_y = 48
+    assert scene.render.resolution_percentage == 200, "細線化が倍率に効いていない"
+
+    marked = render_size._composite_scales(scene)
+    assert len(marked) == 1, f"Composite 側の縮小ノードが {len(marked)}個"
+    tree = compat.get_compositor_tree(scene)
+    all_scales = [n for n in tree.nodes if n.type == "SCALE"]
+    assert len(all_scales) > len(marked), (
+        f"ファイル出力側の縮小まで目印が付いている: "
+        f"縮小ノード{len(all_scales)}個 / 目印{len(marked)}個")
+
+    # レンダーの間だけ 1.0 に、終わったら 0.5 に戻ること
+    before = marked[0].inputs["X"].default_value
+    render_size._render_pre(scene)
+    during = marked[0].inputs["X"].default_value
+    render_size._render_post(scene)
+    after = marked[0].inputs["X"].default_value
+    assert abs(before - 0.5) < 1e-6, f"縮小率が 0.5 でない: {before}"
+    assert abs(during - 1.0) < 1e-6, f"レンダー中に外れていない: {during}"
+    assert abs(after - 0.5) < 1e-6, f"レンダー後に戻っていない: {after}"
+
+    # 実際に F12 相当を回して、絵が枠いっぱいに出ること
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t47_"))
+    try:
+        scene.render.filepath = str(tmp / "f12.png")
+        bpy.ops.render.render(write_still=True)
+        img = bpy.data.images.load(str(tmp / "f12.png"))
+        w, h = img.size
+        buf = [0.0] * (w * h * 4)
+        img.pixels.foreach_get(buf)
+        bpy.data.images.remove(img)
+        cols = [any(buf[(y * w + x) * 4 + 3] > 0.5 for y in range(h))
+                for x in range(w)]
+        width = sum(1 for c in cols if c)
+        assert (w, h) == (128, 96), f"レンダー解像度が想定と違う: {w}x{h}"
+        # 縮小が外れていれば、被写体は横幅の半分より広く写る
+        assert width > w * 0.5, (
+            f"絵が縮んだまま出ている: 被写体幅 {width} / 画像幅 {w}")
+    finally:
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

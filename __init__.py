@@ -23,7 +23,7 @@ ADDON_VERSION = bl_info["version"]
 #
 # scripts/stamp_dev.py が YYYYMMDD+通し番号(3桁)を書き込み、
 # scripts/install_all.py --release が空に戻す。
-DEV_BUILD = "20260909002"
+DEV_BUILD = "20260909005"
 
 
 def version_label() -> str:
@@ -162,6 +162,10 @@ def register():
     
     from .props import register_props
     register_props()
+
+    # 細線化したときの F12 の出力サイズを整える(render_size の説明を参照)
+    from . import render_size
+    render_size.register_handlers()
     
     # 依存関係に従った順序で各クラスを登録
     for cls in ordered_classes:
@@ -201,6 +205,9 @@ def unregister():
             except RuntimeError:
                 logger.warning(f"Could not unregister {cls.__name__}")
     
+    from . import render_size
+    render_size.unregister_handlers()
+
     from .props import unregister_props
     unregister_props()
 

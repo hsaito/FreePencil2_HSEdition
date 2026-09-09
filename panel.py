@@ -194,6 +194,11 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
                  text=t("Include Anti-Aliasing Node"))
         col.prop(scene, "fp_supersample",
                  text=t("2x supersampling (thin lines)"))
+        if scene.fp_supersample:
+            # 2倍で出ることを先に言っておく。黙っていると「指定と違う
+            # 大きさで出る」と受け取られる
+            col.label(text=t("F12 renders at 2x. STEP5 writes the final size"),
+                      icon="INFO")
         col.prop(scene, "fp_line_sensitivity", text=t("Line sensitivity"))
 
         # 線の強弱(入り抜き)。くぼみが深いほど太くする

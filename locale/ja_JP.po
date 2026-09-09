@@ -617,3 +617,7 @@ msgstr "先に STEP3 を実行し、カメラを被写体に向けてくださ�
 msgctxt "*"
 msgid "Measure line weight thresholds"
 msgstr "線の強弱のしきい値を測る"
+
+msgctxt "*"
+msgid "F12 renders at 2x. STEP5 writes the final size"
+msgstr "F12 は2倍で出ます。STEP5 は最終サイズで書き出します"
