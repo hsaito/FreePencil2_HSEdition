@@ -20,6 +20,8 @@ dev/batch/models.json
 dev/note_assets/out/
 # ファイル出力の既定パス //render/ が note_assets の下に出る
 dev/note_assets/render/
+# 未保存のファイルからレンダーすると //render/ がリポジトリ直下に出る
+/render/
 
 # ローカル環境のログ・設定(追跡しない)
 blender_debug.log
