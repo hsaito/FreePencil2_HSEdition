@@ -124,6 +124,16 @@ def register_props():
             # 一括評価パイプラインはプリセットで明示的にONにする。
             default=False
         ),
+        "fp_auto_split_floor": FloatProperty(
+            name="Artificial split floor",
+            description=(
+                "Lowest angle the auto threshold may pick for a model that "
+                "has no structural edges at all. Too low and a smoothly "
+                "curving surface gets cut across at an arbitrary place"
+            ),
+            # 既定 5.0 = 従来どおり。値を決めるまで挙動を変えない
+            default=5.0, min=1.0, max=45.0, step=0.5, precision=1
+        ),
         "fp_sharp_edges": FloatProperty(
             name="Line sharp edges",
             description="Outline's angle threshold.",
@@ -737,7 +747,8 @@ def unregister_props():
     """プロパティを解除する関数"""
     scene = bpy.types.Scene
     props_to_clear = [
-        "fp_sharp_edges", "fp_sharp_auto", "fp_seam_boundaries",
+        "fp_sharp_edges", "fp_sharp_auto", "fp_auto_split_floor",
+        "fp_seam_boundaries",
         "fp_min_island_area_pct", "fp_sharp_clear",
         "fp_ridge_amount", "fp_ridge_radius",
         "fp_curve_blur", "fp_curve_blur_angle", "fp_curve_blur_auto",

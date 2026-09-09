@@ -264,8 +264,20 @@ def count_loose_parts(mesh, stop_at: int = 0) -> int:
     return len(seen)
 
 
+# 人工分割の角度の下限。
+#
+# 「一様に滑らかで構造線が無い」枝に落ちたモデルは、p50×0.95 で
+# 分割線を人工的に作る。下限が 5度 だと、なめらかに曲がる面のどこでも
+# 超えてしまうので、切れ目が形と関係ない場所に落ちる。実測: サブサーフを
+# 適用したスザンヌは 6.2度 が選ばれ、耳の裏がメカのパネルのように
+# 面を横切って割れた(その境界がそのまま線画に出る)。
+#
+# 呼ぶ側が floor を渡せるようにして、既定は従来どおり 5.0。
+ARTIFICIAL_SPLIT_FLOOR = 5.0
+
+
 def choose_auto_threshold(angles_deg, has_armature=False, many_parts=False,
-                          has_subsurf=False):
+                          has_subsurf=False, split_floor=None):
     """二面角の分布から STEP1 のシャープしきい値を自動決定する。
 
     実測(車/メカ/塔/人物/イカ/球/樹木の7モデル)に基づくルール:
@@ -320,7 +332,8 @@ def choose_auto_threshold(angles_deg, has_armature=False, many_parts=False,
     if has_subsurf:
         # ベースメッシュは粗いケージ。ここで割るとケージが線になる
         return 60.0, None
-    return max(5.0, pct(50) * 0.95), None
+    floor = ARTIFICIAL_SPLIT_FLOOR if split_floor is None else float(split_floor)
+    return max(floor, pct(50) * 0.95), None
 
 
 def _color_distance(c1, c2) -> float:

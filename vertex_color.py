@@ -455,7 +455,8 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                                   for m in obj.modifiers)
                     auto_deg, auto_merge_pct = utils.choose_auto_threshold(
                         angle_samples, has_armature=has_arm,
-                        many_parts=many_loose_parts, has_subsurf=has_subsurf)
+                        many_parts=many_loose_parts, has_subsurf=has_subsurf,
+                        split_floor=getattr(scene, "fp_auto_split_floor", None))
                     # サブディビジョン付きは「低い角度で切ってから、鋭角以外を
                     # 溶かす」方式に切り替える。
                     #
