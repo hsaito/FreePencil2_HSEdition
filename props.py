@@ -131,8 +131,10 @@ def register_props():
                 "has no structural edges at all. Too low and a smoothly "
                 "curving surface gets cut across at an arbitrary place"
             ),
-            # 既定 5.0 = 従来どおり。値を決めるまで挙動を変えない
-            default=5.0, min=1.0, max=45.0, step=0.5, precision=1
+            # 既定 14.0。BlenderKit 60体で確かめた値(utils.py の
+            # ARTIFICIAL_SPLIT_FLOOR に根拠)。この枝に落ちるのは4体だけで、
+            # 4体とも同じか良くなった
+            default=14.0, min=1.0, max=45.0, step=0.5, precision=1
         ),
         "fp_sharp_edges": FloatProperty(
             name="Line sharp edges",

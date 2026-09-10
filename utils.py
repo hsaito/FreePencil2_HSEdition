@@ -272,8 +272,19 @@ def count_loose_parts(mesh, stop_at: int = 0) -> int:
 # 適用したスザンヌは 6.2度 が選ばれ、耳の裏がメカのパネルのように
 # 面を横切って割れた(その境界がそのまま線画に出る)。
 #
-# 呼ぶ側が floor を渡せるようにして、既定は従来どおり 5.0。
-ARTIFICIAL_SPLIT_FLOOR = 5.0
+# 14度 にする根拠(BlenderKit 60体・2026-09):
+#   この枝に落ちるのは 60体中4体だけ。残り56体は構造線・曲率・多パーツ・
+#   リグ・サブサーフのどれかで先に決まるので、下限には届かない。
+#   触れた4体を原寸で見た結果、4体とも同じか良くなった。
+#     eggs_bowl    卵1個ごとの偽の同心円(輪切りのオリーブに見えた)が消え、
+#                  卵の輪郭は残った
+#     formal-shoe  舌革の階段状のギザギザが消えた
+#     cleaver_knife 柄の余計な斜線が消えた
+#     basketball   縫い目が強くなった(18度では消えるので上げすぎない)
+#   スザンヌの耳が直るのが 13->14度 なので、これより下げると戻る。
+#
+# 呼ぶ側が floor を渡せるようにしてある。
+ARTIFICIAL_SPLIT_FLOOR = 14.0
 
 
 def choose_auto_threshold(angles_deg, has_armature=False, many_parts=False,

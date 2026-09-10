@@ -91,8 +91,15 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
             # 残る。メカも 1% ならパネルの区別を保ったまま粒が落ちる
             scene.fp_min_island_area_pct = 1.0
             # 広くまとめると島の中の線が消えるので、稜線の起伏で補う。
-            # 平らな面では残差がほぼゼロなのでメカには足されない
-            scene.fp_ridge_amount = 0.25
+            # 平らな面では残差がほぼゼロなのでメカには足されない。
+            #
+            # 0.45 にする根拠(BlenderKit・2026-09): 0.25/0.35/0.45/0.50 を
+            # 10体で振ったところ、どの値でもどのモデルも内側の線が減らず
+            # (最小 99.9%)、中央は 100/111/123/132% と増える一方だった。
+            # 0.50 は上限で調整の余地が無く、ハンガーの屋根が詰まりはじめる。
+            # メカと壺は全域で1画素も変わらない(平らな面では残差ゼロ)。
+            # スザンヌの口の輪郭は 0.45 でないと戻らない(下限14度と役割が別)
+            scene.fp_ridge_amount = 0.45
             scene.fp_ridge_radius = 0.08
         if scene.fp_auto_part_tint:
             scene.fp_part_tint = True
