@@ -141,6 +141,12 @@ def main() -> None:
     src = Path(a.src)
     S = Src(src)
     meta = json.loads((src / "movie.json").read_text(encoding="utf-8"))
+    # キャプションの数字は同じ素材から測る(measure_lw_movie.py)。
+    # 別の撮影の数字を書いたままにしない
+    st = json.loads((src / "stats.json").read_text(encoding="utf-8"))
+    black = f"真っ黒率 {st['off']['black_rate']:.1f}% → {st['on']['black_rate']:.1f}%"
+    steady = (f"隣接フレーム差 {st['off']['step_mean']:.2f}%"
+              f"→{st['on']['step_mean']:.2f}%")
     fps = a.fps
     tmp = src / "seq"
     if tmp.exists():
@@ -156,7 +162,7 @@ def main() -> None:
     for _ in range(fps):
         push(title_card(["線に強弱をつける"],
                         ["くぼみが深いところほど太く、開いたところほど細く",
-                         "島の切り方と線の出かたも自動で弱めに切り替わる",
+                         "線の出かたも自動で少し弱めに切り替わる",
                          "FreePencil2 v2.8 開発中"]))
 
     # 2. 強弱なしで、正面に戻ってくるように回す。
@@ -181,7 +187,7 @@ def main() -> None:
     for i in range(int(fps * 5.0)):
         k = hold + int(i / (fps * 5.0) * S.n)
         push(caption(S.get("on", k).copy(), "強弱あり",
-                     "回してもちらつかない。隣接フレーム差 2.19%→2.04%"))
+                     f"回してもちらつかない。{steady}"))
 
     # 5. 左右分割で1周
     for i in range(int(fps * 4.0)):
@@ -200,14 +206,14 @@ def main() -> None:
     nz = int(fps * 3.0)
     for i in range(nz):
         t = min(1.0, max(0.0, (i / nz - 0.2) / 0.55))
-        # 数字は実測。120フレーム全部を10フレームおきに測った値
-        push(caption(wipe(za, zb, t), "真っ黒率 32.4% → 66.9%",
+        # 数字は同じ素材の実測(10フレームおき)
+        push(caption(wipe(za, zb, t), black,
                      "線の芯が黒くなり、余分な線は減る"))
 
     # 7. 締め
     for _ in range(fps):
         push(title_card(["くぼみ(AO)で線に強弱"],
-                        ["強弱ONで島の切り方(0.4)と線(1.2倍)も自動で弱める",
+                        ["強弱ONで線の感度を1.2倍に自動で弱める",
                          "しきい値はカットに1回測って固定"]))
 
     for i, im in enumerate(frames):
@@ -218,7 +224,7 @@ def main() -> None:
            "yuv420p", "-crf", "18", str(out)]
     subprocess.run(cmd, check=True, capture_output=True)
     print(f"{len(frames)}フレーム / {len(frames) / fps:.1f}秒  "
-          f"しきい値 {meta['edges']}")
+          f"しきい値 {meta['edges']}  {black}  {steady}")
     print(out)
 
 

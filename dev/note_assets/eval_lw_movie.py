@@ -148,21 +148,15 @@ def main() -> None:
     # 縮小はアドオン側ではなく保存時に行う。アドオンの細線化は
     # キャンバスがレンダー解像度のままなので、絵が黒い額縁に入る
     sc.fp_auto_supersample = False
-    if MODEL == "suzanne":
-        sc.fp_auto_merge = False
-        sc.fp_auto_sharp = False
-        sc.fp_sharp_auto = True
-        sc.fp_min_island_area_pct = 0.3
-        sc.fp_ridge_amount = 0.25
-        sc.fp_ridge_radius = 0.08
+    # 以前はスザンヌ用に島0.3・稜線0.25・感度0.25 を手で入れていた
+    # (v2.6.2 の土台で撮ったときの調整)。既定を 14度 + 稜線0.45 に
+    # 変えたので、何も上書きせず STEP0 に任せる。使う人と同じ絵になる
     bpy.ops.object.select_all(action="DESELECT")
     for o in meshes:
         o.select_set(True)
     bpy.context.view_layer.objects.active = meshes[0]
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     sc.fp_white_preview = True
-    if MODEL == "suzanne":
-        sc.fp_line_sensitivity = 0.25
 
     sc.fp_supersample = False
     sc.render.engine = fp_batch.eevee_engine()
@@ -186,8 +180,6 @@ def main() -> None:
     bpy.context.view_layer.objects.active = meshes[0]
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     sc.fp_white_preview = True
-    if MODEL == "suzanne":
-        sc.fp_line_sensitivity = 0.25
     place(dist, 0.0)
     bpy.ops.freepencil.measure_line_weight()
     edges = [round(getattr(sc, f"fp_lw_e{i}"), 5) for i in range(1, 5)]
