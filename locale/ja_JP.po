@@ -591,6 +591,10 @@ msgid "Weight darkness"
 msgstr "濃さ"
 
 msgctxt "*"
+msgid "Weight tone"
+msgstr "濃さの強弱"
+
+msgctxt "*"
 msgid "Keep crowded lines thin"
 msgstr "詰まった線は太らせない"
 

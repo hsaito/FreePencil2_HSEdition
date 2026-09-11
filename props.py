@@ -372,7 +372,7 @@ def register_props():
         "fp_lw_strength": FloatProperty(
             name="Weight strength",
             description=(
-                "Multiplier on the step widths. 1.0 = 5/4/3/2/1 px before "
+                "Multiplier on the step widths. 1.0 = 12/8/5/3/2 px before "
                 "the 50% shrink"
             ),
             default=1.0, min=0.2, max=3.0, step=0.05, precision=2
@@ -385,6 +385,17 @@ def register_props():
             ),
             # 0.25 だと薄い線を落として点線になった。0.15 で繋がる
             default=0.15, min=0.02, max=0.8, step=0.01, precision=2
+        ),
+        "fp_lw_tone": FloatProperty(
+            name="Weight tone",
+            description=(
+                "Also vary darkness by step: the thinnest step fades to "
+                "grey while the thickest stays black. 0 = width only"
+            ),
+            # 太さは整数画素で頭打ち(line_weight.build_weight に実測)。
+            # 0.5 で一番細い段が表示 70% の灰色。1.0 だと輪郭が薄すぎた。
+            # 他の強弱のつまみと同じく、反映は STEP3 のやり直し
+            default=0.5, min=0.0, max=1.0, step=0.05, precision=2
         ),
         "fp_lw_gain": FloatProperty(
             name="Weight darkness",
@@ -758,7 +769,7 @@ def unregister_props():
         "fp_gen_color", "fp_mask_color", "fp_line_color",
         "fp_mat_color", "fp_bone_color", "fp_enable_compositor_view",
         "fp_include_antialiasing", "fp_line_sensitivity",
-        "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain",
+        "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain", "fp_lw_tone",
         "fp_lw_ao_dist", "fp_lw_ao_blur", "fp_lw_crowd",
         "fp_lw_crowd_radius", "fp_lw_crowd_threshold", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",

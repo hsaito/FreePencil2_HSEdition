@@ -1956,6 +1956,99 @@ def t47():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("line-weight steps get an even share of line pixels, deepest step is the widest")
+def t48():
+    # 段分けが働いていなかった。計測は生の AO を PNG で読み、合成は
+    # ぼかした AO を使っていて、線の画素の 88% が一番細い段に入っていた
+    # (しきい値 0.004〜0.094 に対し合成側の 20% 点が 0.136)。さらに段の
+    # 向きが逆で、一番浅い所に一番太い段が当たっていた。どちらも 47 本
+    # のテストは通ったままだった。合成の中の値で確かめる
+    import glob
+    import os
+    import shutil
+    import tempfile
+    from freepencil2 import compat, line_weight
+
+    scene, _ = _lw_scene()
+    scene.fp_line_weight = True
+    scene.fp_supersample = False
+    scene.render.resolution_x = 160
+    scene.render.resolution_y = 120
+    scene.render.resolution_percentage = 200
+    scene.render.film_transparent = True
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    bpy.ops.freepencil.measure_line_weight()
+    edges = line_weight.edges_from_scene(scene)
+    bpy.ops.freepencil2.link_button()
+
+    tree = compat.get_compositor_tree(scene)
+    lab = line_weight.NODE_LABEL
+    dep = binz = None
+    for n in tree.nodes:
+        if n.label != lab or n.type != "MATH":
+            continue
+        src = n.inputs[1].links[0].from_node if n.inputs[1].links else None
+        if (n.operation == "SUBTRACT" and src is not None and src.type == "BLUR"
+                and abs(n.inputs[0].default_value - 1.0) < 1e-6):
+            dep = n
+        src0 = n.inputs[0].links[0].from_node if n.inputs[0].links else None
+        if (n.operation == "GREATER_THAN" and src0 is not None
+                and src0.type == "INVERT" and binz is None):
+            binz = n
+    assert dep is not None and binz is not None, "dep / binz が見つからない"
+
+    # 向き: 一番太い段は、一番深い側(最後のしきい値より上)に当たる
+    des = [n for n in tree.nodes
+           if n.type == "DILATEERODE" and n.label == lab and n.inputs[0].links
+           and n.inputs[0].links[0].from_node.type == "MATH"]
+    def _size(n):
+        return n.distance if hasattr(n, "distance") else n.inputs["Size"].default_value
+    fat = max(des, key=_size)
+    seg = fat.inputs[0].links[0].from_node
+    band = seg.inputs[1].links[0].from_node
+    assert band.operation == "GREATER_THAN" and         abs(band.inputs[1].default_value - edges[-1]) < 1e-6, (
+            "一番太い段が一番深い側に当たっていない: "
+            f"{band.operation} {band.inputs[1].default_value} / edges {edges}")
+
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t48_"))
+    try:
+        fo = tree.nodes.new("CompositorNodeOutputFile")
+        compat.file_output_set_dir(fo, str(tmp))
+        compat.file_output_clear_slots(fo)
+        for name, node in (("dep", dep), ("binz", binz)):
+            compat.file_output_add_slot(fo, name, "OPEN_EXR", "RGBA")
+            tree.links.new(node.outputs[0], fo.inputs[name])
+        bpy.ops.render.render(write_still=False)
+        tree.nodes.remove(fo)
+
+        def load(slot):
+            hit = [h for h in glob.glob(os.path.join(str(tmp), "**", f"*{slot}*"),
+                                        recursive=True) if os.path.isfile(h)][0]
+            img = bpy.data.images.load(hit)
+            w, h = img.size
+            buf = [0.0] * (w * h * 4)
+            img.pixels.foreach_get(buf)
+            bpy.data.images.remove(img)
+            return buf[0::4]
+        d = load("dep")
+        b = load("binz")
+        vals = [x for x, y in zip(d, b) if y > 0.5]
+        assert len(vals) > 200, f"線の画素が少なすぎる: {len(vals)}"
+        n = len(edges) + 1
+        share = [0] * n
+        for v in vals:
+            k = sum(1 for e in edges if v > e)
+            share[k] += 1
+        share = [s * 100.0 / len(vals) for s in share]
+        # 20% ずつが理想。計測(50%)と合成(200%)でぼかしの粒が違うので
+        # ぴったりにはならないが、壊れていた頃は [0.2, 0.4, 2.7, 8.7, 88]
+        assert max(share) < 50 and min(share) > 5, (
+            f"段の割合が偏っている: {[round(x, 1) for x in share]} %  edges {edges}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

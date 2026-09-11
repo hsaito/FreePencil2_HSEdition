@@ -41,7 +41,13 @@ from . import compat
 # 段ごとの太さ(px)。くぼんでいる側から太い順。2倍レンダを前提とする。
 # 一番細い段を 1px にすると 50% 縮小で 0.5px になり、線が破線に見えた
 # (実測: 頬と瞼が点線)。2px を下限にする
-LEVELS = (6, 5, 4, 3, 2)
+#
+# 6/5/4/3/2 では縮小後 3/2/2/2/1 で真ん中の3段が同じ太さになり、段分けを
+# 直しても目のまわりしか変わらなかった(実測)。太い側を伸ばして比を 6倍
+# (縮小後 6/4/2/2/1)にし、濃さの強弱(fp_lw_tone)と合わせて差を出す。
+# スザンヌの耳・カメラのレンズ・車のグリルで詰まりの守りが効くことは
+# 確認済み(dev/note_assets/eval_lw_crowd_check.py)
+LEVELS = (12, 8, 5, 3, 2)
 
 # 再生成時に消す目印。fp_core.setup_compositor のクリーンアップが
 # label.startswith("FreePencil") のノードを消すので、それに乗せる
@@ -172,6 +178,13 @@ def _set_dilate(node, px):
     _set_enum_socket(node, "Type", "STEP", "Step")
 
 
+def _srgb_to_linear(c: float) -> float:
+    """表示の明るさをリニアへ。濃さの段を表示基準で決めるために使う。"""
+    if c <= 0.04045:
+        return c / 12.92
+    return ((c + 0.055) / 1.055) ** 2.4
+
+
 def _math(tree, op, x, y, a=None, b=None):
     n = _new_math(tree)
     n.operation = op
@@ -184,7 +197,57 @@ def _math(tree, op, x, y, a=None, b=None):
     return n
 
 
-def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200):
+def blur_from_scene(scene) -> int:
+    """くぼみのぼかし半径。段の太さと同じくレンダー倍率で割る。
+
+    ぼかしは画素単位なので、25% で測って 200% で使うと模型に対する
+    ぼかしの広さが 8 倍違い、しきい値が合わない。どの倍率でも同じ
+    広さになるよう、200% を基準に割る。
+    """
+    px = max(0, int(getattr(scene, "fp_lw_ao_blur", 4)))
+    pct = max(1, getattr(scene.render, "resolution_percentage", 100))
+    return max(0, round(px * pct / 200.0))
+
+
+def dep_chain(tree, ao_sock, alpha_sock, scene, x0, y0):
+    """AO から「くぼみの深さ d = 1 - AO」を作る。合成と計測の両方が使う。
+
+    計測(measure_edges)は生の AO を 25% で PNG に書いて読み、合成は
+    4px ぼかした AO を使っていた。ぼかしは透明な背景(AO=0)を輪郭へ
+    引き込むので、合成側の d は計測側より1桁大きく、線の画素の 88% が
+    一番細い段に入っていた(実測: しきい値 0.004〜0.094 に対し合成側の
+    20% 点が 0.136)。段分けは事実上働いていなかった。
+
+    直し方は2つで、どちらもここに閉じ込める。
+      - ぼかす前に、背景を「開いている(AO=1)」で埋める
+      - 計測も同じ鎖を通した値を読む(同じ関数を呼ぶ)
+    """
+    src = ao_sock
+    if alpha_sock is not None:
+        # AO + (1 - alpha): モデルの外を 1 にしてから、1 を超えた分を切る
+        inv_a = _math(tree, "SUBTRACT", x0, y0 - 300, a=1.0)
+        tree.links.new(alpha_sock, inv_a.inputs[1])
+        fill = _math(tree, "ADD", x0 + 120, y0 - 300)
+        tree.links.new(ao_sock, fill.inputs[0])
+        tree.links.new(inv_a.outputs[0], fill.inputs[1])
+        cap = _math(tree, "MINIMUM", x0 + 240, y0 - 300, b=1.0)
+        tree.links.new(fill.outputs[0], cap.inputs[0])
+        src = cap.outputs[0]
+    # AO は EEVEE のレイトレなので粒が乗る。粒がそのまま段の切り替わり
+    # になって、1本の線が点線に見える。少しぼかしてから段に切る
+    blur = tree.nodes.new("CompositorNodeBlur")
+    blur.location = (x0, y0 - 180)
+    blur.label = NODE_LABEL
+    _set_blur(blur, blur_from_scene(scene))
+    tree.links.new(src, blur.inputs[0])
+    # d = 1 - AO。くぼんでいるほど大きい
+    dep = _math(tree, "SUBTRACT", x0 + 200, y0 - 180, a=1.0)
+    tree.links.new(blur.outputs[0], dep.inputs[1])
+    return dep
+
+
+def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
+                 alpha_sock=None):
     """線に強弱を付ける枝を組み、出口のソケットを返す。
 
     line_sock は「白背景・黒線」であること。グループの "line" 出力は
@@ -207,17 +270,7 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200):
     binz = _math(tree, "GREATER_THAN", x0 + 200, y0, b=binv)
     tree.links.new(inv.outputs[0], binz.inputs[0])
 
-    # AO は EEVEE のレイトレなので粒が乗る。粒がそのまま段の切り替わり
-    # になって、1本の線が点線に見える。少しぼかしてから段に切る
-    blur = tree.nodes.new("CompositorNodeBlur")
-    blur.location = (x0, y0 - 180)
-    blur.label = NODE_LABEL
-    _set_blur(blur, max(0, int(getattr(scene, "fp_lw_ao_blur", 4))))
-    tree.links.new(ao_sock, blur.inputs[0])
-
-    # d = 1 - AO。くぼんでいるほど大きい
-    dep = _math(tree, "SUBTRACT", x0 + 200, y0 - 180, a=1.0)
-    tree.links.new(blur.outputs[0], dep.inputs[1])
+    dep = dep_chain(tree, ao_sock, alpha_sock, scene, x0, y0)
 
     # 線が詰まっているところは太らせない。
     # スザンヌの耳の縁のように、薄い縁を斜めから見るとメッシュの輪が
@@ -252,7 +305,13 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200):
 
     n = len(levels)
     prev = None
-    for k, px in enumerate(levels):
+    tiers = []          # 段ごとの太らせた線。あとで濃さの地図に使う
+    # k は浅い側から数える(k=0 が一番開いた所、k=n-1 が一番深い所)。
+    # 太さは深いほど太くしたいので、段の並びは逆から当てる。
+    # 以前は levels[k] をそのまま当てていて、開いた所が一番太くなる
+    # 向きだった。段分けが働いていなかった(88% が最後の段)ので
+    # 表に出ていなかっただけで、直した途端に輪郭だけが太った(実測)
+    for k, px in enumerate(levels[::-1]):
         yy = y0 - 360 - k * 240
         band = None
         if k > 0:
@@ -284,6 +343,7 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200):
         de.label = NODE_LABEL
         _set_dilate(de, px)
         tree.links.new(seg.outputs[0], de.inputs[0])
+        tiers.append(de)
         if prev is None:
             prev = de
         else:
@@ -327,10 +387,47 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200):
     tree.links.new(prev.outputs[0], g.inputs[0])
     cl = _math(tree, "MINIMUM", x0 + 1480, y0 - 400, b=1.0)
     tree.links.new(g.outputs[0], cl.inputs[0])
+    last = cl
+
+    # 濃さでも強弱をつける。
+    # 太さは整数画素でしか変えられず、2倍レンダを半分に縮めると
+    # 6/5/4/3/2 が 3/2/2/2/1 に潰れて真ん中の3段が同じ太さになる
+    # (実測)。段の並びを 12/8/5/3/2 まで広げても目のまわりが少し太る
+    # だけで、眉や輪郭は変わらなかった。太さは頭打ちなので、細い段を
+    # 灰色にして濃さで差を出す。一番太い段は黒のまま、一番細い段は
+    # (1 - 0.6*tone) まで薄くなる。tone=0 で従来どおり。
+    # gain は薄い線を黒へ持ち上げるためのものなので、その後で掛ける
+    #
+    # 掛け算はリニアで行われ、出力で sRGB に変わる。リニアで 0.78 に
+    # した線は表示では 0.5 になる(実測: 全画素が 0.5 以下に落ちた)。
+    # 「表示でどれだけ薄いか」を決めて、リニアの倍率へ変換して掛ける
+    tone = max(0.0, min(1.0, float(getattr(scene, "fp_lw_tone", 0.0))))
+    if tone > 0.0 and len(tiers) > 1:
+        tprev = None
+        for k, de in enumerate(tiers):
+            # k=0 が一番浅い(細い)段。そこを一番薄くする
+            thin = (len(tiers) - 1 - k) / (len(tiers) - 1)
+            shown = 1.0 - 0.6 * tone * thin                    # 表示の濃さ
+            dk = 1.0 - _srgb_to_linear(1.0 - shown)
+            yy = y0 - 360 - k * 240
+            m = _math(tree, "MULTIPLY", x0 + 1120, yy - 100, b=dk)
+            tree.links.new(de.outputs[0], m.inputs[0])
+            if tprev is None:
+                tprev = m
+            else:
+                mx = _math(tree, "MAXIMUM", x0 + 1250, yy - 100)
+                tree.links.new(tprev.outputs[0], mx.inputs[0])
+                tree.links.new(m.outputs[0], mx.inputs[1])
+                tprev = mx
+        shade = _math(tree, "MULTIPLY", x0 + 1560, y0 - 400)
+        tree.links.new(cl.outputs[0], shade.inputs[0])
+        tree.links.new(tprev.outputs[0], shade.inputs[1])
+        last = shade
+
     out = tree.nodes.new("CompositorNodeInvert")
     out.location = (x0 + 1660, y0 - 400)
     out.label = NODE_LABEL
-    tree.links.new(cl.outputs[0], out.inputs["Color"])
+    tree.links.new(last.outputs[0], out.inputs["Color"])
     return out.outputs[0]
 
 
@@ -390,7 +487,8 @@ def apply(scene, view_layer, tree, target_socket):
     if ao is None:
         return None
     line_sock = target_socket.links[0].from_socket
-    out = build_weight(tree, line_sock, ao, scene)
+    out = build_weight(tree, line_sock, ao, scene,
+                       alpha_sock=rl.outputs.get("Alpha"))
     for lnk in list(target_socket.links):
         tree.links.remove(lnk)
     tree.links.new(out, target_socket)
@@ -398,6 +496,19 @@ def apply(scene, view_layer, tree, target_socket):
 
 
 # ---------------------------------------------------------------- 計測
+
+def _load_float(path):
+    """EXR を float のまま読む(R だけ)。"""
+    import numpy as np
+    img = bpy.data.images.load(str(path))
+    try:
+        w, h = img.size
+        buf = np.empty(w * h * 4, dtype=np.float32)
+        img.pixels.foreach_get(buf)
+        return buf.reshape(h, w, 4)[..., 0].copy()
+    finally:
+        bpy.data.images.remove(img)
+
 
 def _load_gray(path):
     """PNG を、書いたときの値そのままで読む。
@@ -453,11 +564,16 @@ def _source_before_scale(socket):
     return None
 
 
-def measure_edges(scene, view_layer, percent=25):
+def measure_edges(scene, view_layer, percent=50):
     """1回レンダして、線の画素における d = 1 - AO の分位点を返す。
 
     絵ごとに 15 倍ひらくので固定値では配れない。カットごとに1回
-    測って固定する。低い解像度で十分(分位点は解像度に依らない)。
+    測って固定する。
+
+    d は合成と同じ鎖(dep_chain: 背景埋め -> ぼかし -> 1-AO)を通し、
+    EXR(float)で読む。生の AO を PNG で読んでいたときは 8bit の
+    量子化で最初のしきい値が 1/255 = 0.0039 になっていた(実測)。
+    ぼかしはレンダー倍率で割るので、50% で測っても 200% と同じ広さ。
     """
     import numpy as np
     # 5.x は scene.node_tree が無く、コンポジタはノードグループになった。
@@ -490,7 +606,7 @@ def measure_edges(scene, view_layer, percent=25):
     if ao_sock is None:
         tree.nodes.remove(fo)
         return None
-    for name, sock in (("ao", ao_sock), ("line", line_src),
+    for name, sock in (("line", line_src),
                        # アルファは線の絵ではなくレンダーレイヤーから取る。
                        # 線の絵は縮小の有無で大きさが変わる
                        ("sil", rl.outputs["Alpha"])):
@@ -498,6 +614,24 @@ def measure_edges(scene, view_layer, percent=25):
         # 5.x は file_output_items と inputs の並びが一致しないことが
         # あるので、末尾ではなく名前で挿す(fp_core と同じやり方)
         tree.links.new(sock, fo.inputs[name])
+    # d は合成と同じ鎖で作り、float のまま書く。4.x の File Output は
+    # ノード単位でしか形式を持てないので、EXR 用にもう1つ置く
+    scene.render.resolution_percentage = percent   # blur_from_scene が見る
+    chain_start = len(tree.nodes)
+    dep = dep_chain(tree, ao_sock, rl.outputs.get("Alpha"), scene,
+                    x0=-600, y0=-600)
+    chain_nodes = list(tree.nodes)[chain_start:]
+    scene.render.resolution_percentage = keep_pct
+    fo2 = tree.nodes.new("CompositorNodeOutputFile")
+    fo2.label = NODE_LABEL
+    compat.file_output_set_dir(fo2, tmp)
+    compat.file_output_clear_slots(fo2)
+    compat.file_output_add_slot(fo2, "dep", "OPEN_EXR", "RGBA")
+    try:
+        fo2.format.color_depth = "32"
+    except (AttributeError, TypeError):
+        pass
+    tree.links.new(dep.outputs[0], fo2.inputs["dep"])
     # 色管理を通すと値が変わり、分位点がずれる
     try:
         fo.format.color_management = "OVERRIDE"
@@ -508,22 +642,25 @@ def measure_edges(scene, view_layer, percent=25):
     try:
         scene.render.resolution_percentage = percent
         bpy.ops.render.render(write_still=False)
-        ao, _ = _load_gray(_find(tmp, "ao"))
+        d_all = _load_float(_find(tmp, "dep"))
         ln, _ = _load_gray(_find(tmp, "line"))
         al, _ = _load_gray(_find(tmp, "sil"))
     finally:
         tree.nodes.remove(fo)
+        tree.nodes.remove(fo2)
+        for n in chain_nodes:
+            tree.nodes.remove(n)
         scene.render.resolution_percentage = keep_pct
         # 測るたびに temp が残っていた
         shutil.rmtree(tmp, ignore_errors=True)
 
-    if ao.shape != ln.shape or ao.shape != al.shape:
+    if d_all.shape != ln.shape or d_all.shape != al.shape:
         return None
     ink = 1.0 - ln
     on = (ink > getattr(scene, "fp_lw_bin", 0.15)) & (al > 0.5)
     if int(on.sum()) < 200:
         return None
-    d = (1.0 - ao)[on]
+    d = d_all[on]
     n = len(LEVELS)
     return [float(np.percentile(d, 100.0 * (k + 1) / n)) for k in range(n - 1)]
 

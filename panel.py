@@ -218,6 +218,7 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         sub.prop(scene, "fp_lw_ao_blur", text=t("Cavity smoothing"))
         sub.prop(scene, "fp_lw_bin", text=t("Weight binarize"), slider=True)
         sub.prop(scene, "fp_lw_gain", text=t("Weight darkness"), slider=True)
+        sub.prop(scene, "fp_lw_tone", text=t("Weight tone"), slider=True)
         sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
                  slider=True)
         sub2 = sub.column(align=True)
