@@ -1956,13 +1956,12 @@ def t47():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
-@test("line-weight steps get an even share of line pixels, deepest step is the widest")
+@test("line weight: deeper cavities get wider ink, measured in the final image")
 def t48():
-    # 段分けが働いていなかった。計測は生の AO を PNG で読み、合成は
-    # ぼかした AO を使っていて、線の画素の 88% が一番細い段に入っていた
-    # (しきい値 0.004〜0.094 に対し合成側の 20% 点が 0.136)。さらに段の
-    # 向きが逆で、一番浅い所に一番太い段が当たっていた。どちらも 47 本
-    # のテストは通ったままだった。合成の中の値で確かめる
+    # 段分けが働いていなかった(計測は生の AO、合成はぼかした AO で
+    # 線の画素の 88% が最細の段)うえに、段の向きも逆だった。47 本の
+    # テストは通ったままだった。その後、段そのものをやめて連続にした。
+    # 構造ではなく最終画像で「深い所ほど太い」を確かめる
     import glob
     import os
     import shutil
@@ -1972,14 +1971,18 @@ def t48():
     scene, _ = _lw_scene()
     scene.fp_line_weight = True
     scene.fp_supersample = False
+    scene.fp_white_preview = True
     scene.render.resolution_x = 160
     scene.render.resolution_y = 120
     scene.render.resolution_percentage = 200
     scene.render.film_transparent = True
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    scene.fp_white_preview = True
     bpy.ops.freepencil.measure_line_weight()
     edges = line_weight.edges_from_scene(scene)
+    assert edges[0] < edges[-1], f"しきい値が単調でない: {edges}"
     bpy.ops.freepencil2.link_button()
+    scene.fp_white_preview = True
 
     tree = compat.get_compositor_tree(scene)
     lab = line_weight.NODE_LABEL
@@ -1997,19 +2000,6 @@ def t48():
             binz = n
     assert dep is not None and binz is not None, "dep / binz が見つからない"
 
-    # 向き: 一番太い段は、一番深い側(最後のしきい値より上)に当たる
-    des = [n for n in tree.nodes
-           if n.type == "DILATEERODE" and n.label == lab and n.inputs[0].links
-           and n.inputs[0].links[0].from_node.type == "MATH"]
-    def _size(n):
-        return n.distance if hasattr(n, "distance") else n.inputs["Size"].default_value
-    fat = max(des, key=_size)
-    seg = fat.inputs[0].links[0].from_node
-    band = seg.inputs[1].links[0].from_node
-    assert band.operation == "GREATER_THAN" and         abs(band.inputs[1].default_value - edges[-1]) < 1e-6, (
-            "一番太い段が一番深い側に当たっていない: "
-            f"{band.operation} {band.inputs[1].default_value} / edges {edges}")
-
     tmp = Path(tempfile.mkdtemp(prefix="fp_t48_"))
     try:
         fo = tree.nodes.new("CompositorNodeOutputFile")
@@ -2018,32 +2008,59 @@ def t48():
         for name, node in (("dep", dep), ("binz", binz)):
             compat.file_output_add_slot(fo, name, "OPEN_EXR", "RGBA")
             tree.links.new(node.outputs[0], fo.inputs[name])
-        bpy.ops.render.render(write_still=False)
+        scene.render.filepath = str(tmp / "final.png")
+        bpy.ops.render.render(write_still=True)
         tree.nodes.remove(fo)
 
-        def load(slot):
-            hit = [h for h in glob.glob(os.path.join(str(tmp), "**", f"*{slot}*"),
-                                        recursive=True) if os.path.isfile(h)][0]
-            img = bpy.data.images.load(hit)
+        def load(path):
+            img = bpy.data.images.load(path)
             w, h = img.size
             buf = [0.0] * (w * h * 4)
             img.pixels.foreach_get(buf)
             bpy.data.images.remove(img)
-            return buf[0::4]
-        d = load("dep")
-        b = load("binz")
-        vals = [x for x, y in zip(d, b) if y > 0.5]
-        assert len(vals) > 200, f"線の画素が少なすぎる: {len(vals)}"
-        n = len(edges) + 1
-        share = [0] * n
-        for v in vals:
-            k = sum(1 for e in edges if v > e)
-            share[k] += 1
-        share = [s * 100.0 / len(vals) for s in share]
-        # 20% ずつが理想。計測(50%)と合成(200%)でぼかしの粒が違うので
-        # ぴったりにはならないが、壊れていた頃は [0.2, 0.4, 2.7, 8.7, 88]
-        assert max(share) < 50 and min(share) > 5, (
-            f"段の割合が偏っている: {[round(x, 1) for x in share]} %  edges {edges}")
+            return w, h, buf
+
+        def slot(name):
+            return [h for h in glob.glob(os.path.join(str(tmp), "**", f"*{name}*"),
+                                         recursive=True) if os.path.isfile(h)][0]
+        w, h, d = load(slot("dep"))
+        _, _, b = load(slot("binz"))
+        fw, fh, f = load(str(tmp / "final.png"))
+        assert (fw, fh) == (w, h), f"最終画像と dep の大きさが違う: {(fw, fh)} / {(w, h)}"
+        # 最終画像のインク(白地に黒線。透明は白扱い)
+        ink = [0.0] * (w * h)
+        for i in range(w * h):
+            a = f[i * 4 + 3]
+            g = (f[i * 4] + f[i * 4 + 1] + f[i * 4 + 2]) / 3.0
+            ink[i] = (1.0 - g) * a
+
+        def around(i, r=3):
+            y, x = divmod(i, w)
+            tot = 0.0
+            n = 0
+            for yy in range(max(0, y - r), min(h, y + r + 1)):
+                for xx in range(max(0, x - r), min(w, x + r + 1)):
+                    tot += ink[yy * w + xx]
+                    n += 1
+            return tot / n
+
+        deep, shallow = [], []
+        for i in range(w * h):
+            if b[i * 4] <= 0.5:
+                continue
+            v = d[i * 4]
+            if v > edges[-1]:
+                deep.append(around(i))
+            elif v < edges[0]:
+                shallow.append(around(i))
+        assert len(deep) > 30 and len(shallow) > 30, (
+            f"深い/浅い線画素が少ない: {len(deep)} / {len(shallow)}  edges {edges}")
+        md = sum(deep) / len(deep)
+        ms = sum(shallow) / len(shallow)
+        # 深い所は芯の周りまで黒く、浅い所は芯だけ。壊れていた頃は
+        # 両方が同じ段だったのでほぼ等しかった
+        assert md > ms * 1.3, (
+            f"深い所が太くなっていない: 周りのインク 深い {md:.3f} / 浅い {ms:.3f}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         bpy.ops.wm.read_homefile(use_empty=True)

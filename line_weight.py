@@ -30,6 +30,7 @@ d = 1 - AO」の20%点を測ると 0.0013〜0.0193 と15倍ひらいた。ぼか
 動いて線がちらつくため(前回の実測でフレーム間26%振れた)。
 """
 
+import math
 import os
 import shutil
 import tempfile
@@ -168,6 +169,21 @@ def _set_blur(node, px):
     _set_enum_socket(node, "Type", "GAUSS", "Gaussian")
 
 
+def _set_feather(node, px):
+    """距離で薄れる膨張。芯で 1、px 離れると 0 に直線で落ちる。
+
+    5.x では mode/distance/falloff がソケット Type/Size/Falloff になった。
+    """
+    if hasattr(node, "distance"):
+        node.mode = "FEATHER"
+        node.distance = px
+        node.falloff = "LINEAR"
+        return
+    _set_num_socket(node, "Size", px)
+    _set_enum_socket(node, "Type", "FEATHER", "Feather")
+    _set_enum_socket(node, "Falloff", "LINEAR", "Linear")
+
+
 def _set_dilate(node, px):
     """太らせる量。5.x では distance/mode がソケット Size/Type になった。"""
     if hasattr(node, "distance"):
@@ -303,54 +319,53 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
         crowd_w = _math(tree, "MULTIPLY", x0 + 840, y0 - 60, b=crowd)
         tree.links.new(cl1.outputs[0], crowd_w.inputs[0])
 
-    n = len(levels)
-    prev = None
-    tiers = []          # 段ごとの太らせた線。あとで濃さの地図に使う
-    # k は浅い側から数える(k=0 が一番開いた所、k=n-1 が一番深い所)。
-    # 太さは深いほど太くしたいので、段の並びは逆から当てる。
-    # 以前は levels[k] をそのまま当てていて、開いた所が一番太くなる
-    # 向きだった。段分けが働いていなかった(88% が最後の段)ので
-    # 表に出ていなかっただけで、直した途端に輪郭だけが太った(実測)
-    for k, px in enumerate(levels[::-1]):
-        yy = y0 - 360 - k * 240
-        band = None
-        if k > 0:
-            ge = _math(tree, "GREATER_THAN", x0 + 400, yy, b=edges[k - 1])
-            tree.links.new(dep.outputs[0], ge.inputs[0])
-            band = ge
-        if k < n - 1:
-            lt = _math(tree, "LESS_THAN", x0 + 400, yy - 100, b=edges[k])
-            tree.links.new(dep.outputs[0], lt.inputs[0])
-            if band is None:
-                band = lt
-            else:
-                mul = _math(tree, "MULTIPLY", x0 + 580, yy)
-                tree.links.new(band.outputs[0], mul.inputs[0])
-                tree.links.new(lt.outputs[0], mul.inputs[1])
-                band = mul
-        # 段は「線そのものの位置の明るさ」で決める。太らせた後の画素で
-        # 決めると、太らせた縁が別の段に入って切り落とされ、暗くて太い
-        # はずの段が細くなる(実測で 2.0/3.3/4.9/4.1/3.3px と山なりに
-        # なり、一番太いはずの段が一番細かった)
-        seg = _math(tree, "MULTIPLY", x0 + 760, yy)
-        tree.links.new(binz.outputs[0], seg.inputs[0])
-        if band is None:
-            seg.inputs[1].default_value = 1.0
-        else:
-            tree.links.new(band.outputs[0], seg.inputs[1])
-        de = tree.nodes.new("CompositorNodeDilateErode")
-        de.location = (x0 + 940, yy)
-        de.label = NODE_LABEL
-        _set_dilate(de, px)
-        tree.links.new(seg.outputs[0], de.inputs[0])
-        tiers.append(de)
-        if prev is None:
-            prev = de
-        else:
-            mx = _math(tree, "MAXIMUM", x0 + 1120, yy)
-            tree.links.new(prev.outputs[0], mx.inputs[0])
-            tree.links.new(de.outputs[0], mx.inputs[1])
-            prev = mx
+    # 太さは段ではなく連続に決める。
+    #
+    # 以前は 5 段の硬いしきい値と整数の膨張で太さを決めていた。段分けが
+    # 働いていなかった頃は実質 1 段で、太さの変化は元の線の濃淡から
+    # 連続的に出ていたので絵は綺麗だった。段分けを直した途端、1本の線の
+    # 途中で太さが段になって切れ、眉や耳の縁が別々の線に見えた(実測)。
+    # 段の境目で線が切れるのは設計そのものの問題なので、段をやめる。
+    #
+    # やり方: 線の芯を距離で薄れる形(Feather)に膨らませておき、
+    # 「どこまでを線と見なすか」のしきい値を、くぼみの深さで連続的に
+    # 動かす。深いほどしきい値が下がって太くなる。途中に段はできない。
+    # しきい値は float なので、整数画素の壁(6/5/4/3/2 が 3/2/2/2/1 に
+    # 潰れる)も無くなる。
+    # 芯から外へ広げる量(px)。段があった頃の膨張距離と同じ範囲にする。
+    # 2倍レンダなら 1..6 で、縮小後の太さは 2..7px
+    hw_min = float(min(levels))
+    hw_max = float(max(levels))
+    reach = int(math.ceil(hw_max)) + 1
+    fe = tree.nodes.new("CompositorNodeDilateErode")
+    fe.location = (x0 + 940, y0 - 360)
+    fe.label = NODE_LABEL
+    _set_feather(fe, reach)
+    tree.links.new(binz.outputs[0], fe.inputs[0])
+
+    # 深さを 0..1 に。20% 点より浅ければ 0、80% 点より深ければ 1
+    e_lo, e_hi = edges[0], edges[-1]
+    span = max(1e-6, e_hi - e_lo)
+    s_sub = _math(tree, "SUBTRACT", x0 + 400, y0 - 360, b=e_lo)
+    tree.links.new(dep.outputs[0], s_sub.inputs[0])
+    s_div = _math(tree, "DIVIDE", x0 + 560, y0 - 360, b=span)
+    s_div.use_clamp = True
+    tree.links.new(s_sub.outputs[0], s_div.inputs[0])
+    depth01 = s_div
+
+    # 望む広がり hw = hw_min + (hw_max - hw_min) * s。Feather は芯で 1、
+    # reach 離れると 0 に直線で落ちるので、しきい値 T = 1 - hw / reach で
+    # 「芯から hw まで」が線になる
+    hw = _math(tree, "MULTIPLY_ADD", x0 + 700, y0 - 360, b=hw_max - hw_min)
+    hw.inputs[2].default_value = hw_min
+    tree.links.new(depth01.outputs[0], hw.inputs[0])
+    thr = _math(tree, "MULTIPLY_ADD", x0 + 860, y0 - 460, b=-1.0 / reach)
+    thr.inputs[2].default_value = 1.0
+    tree.links.new(hw.outputs[0], thr.inputs[0])
+    ink = _math(tree, "GREATER_THAN", x0 + 1120, y0 - 360)
+    tree.links.new(fe.outputs[0], ink.inputs[0])
+    tree.links.new(thr.outputs[0], ink.inputs[1])
+    prev = ink
 
     # 元の線の濃さを取り戻す。
     # 2値化は 0.15 を境に 0/1 へ倒すので、線の「濃さ」を変える既存機能が
@@ -389,39 +404,28 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     tree.links.new(g.outputs[0], cl.inputs[0])
     last = cl
 
-    # 濃さでも強弱をつける。
-    # 太さは整数画素でしか変えられず、2倍レンダを半分に縮めると
-    # 6/5/4/3/2 が 3/2/2/2/1 に潰れて真ん中の3段が同じ太さになる
-    # (実測)。段の並びを 12/8/5/3/2 まで広げても目のまわりが少し太る
-    # だけで、眉や輪郭は変わらなかった。太さは頭打ちなので、細い段を
-    # 灰色にして濃さで差を出す。一番太い段は黒のまま、一番細い段は
-    # (1 - 0.6*tone) まで薄くなる。tone=0 で従来どおり。
-    # gain は薄い線を黒へ持ち上げるためのものなので、その後で掛ける
+    # 濃さでも強弱をつける。太さと同じ深さ s から連続に決める。
+    # 一番深い所は黒のまま、一番浅い所は表示で (1 - 0.6*tone) まで薄く。
+    # tone=0 で従来どおり。gain は薄い線を黒へ持ち上げるためのものなので、
+    # その後で掛ける。
     #
     # 掛け算はリニアで行われ、出力で sRGB に変わる。リニアで 0.78 に
     # した線は表示では 0.5 になる(実測: 全画素が 0.5 以下に落ちた)。
-    # 「表示でどれだけ薄いか」を決めて、リニアの倍率へ変換して掛ける
+    # 表示の濃さ shown を決めて、リニアの倍率 1 - (1-shown)^2.2 にする。
+    #   shown = 1 - 0.6*tone*(1-s)
     tone = max(0.0, min(1.0, float(getattr(scene, "fp_lw_tone", 0.0))))
-    if tone > 0.0 and len(tiers) > 1:
-        tprev = None
-        for k, de in enumerate(tiers):
-            # k=0 が一番浅い(細い)段。そこを一番薄くする
-            thin = (len(tiers) - 1 - k) / (len(tiers) - 1)
-            shown = 1.0 - 0.6 * tone * thin                    # 表示の濃さ
-            dk = 1.0 - _srgb_to_linear(1.0 - shown)
-            yy = y0 - 360 - k * 240
-            m = _math(tree, "MULTIPLY", x0 + 1120, yy - 100, b=dk)
-            tree.links.new(de.outputs[0], m.inputs[0])
-            if tprev is None:
-                tprev = m
-            else:
-                mx = _math(tree, "MAXIMUM", x0 + 1250, yy - 100)
-                tree.links.new(tprev.outputs[0], mx.inputs[0])
-                tree.links.new(m.outputs[0], mx.inputs[1])
-                tprev = mx
+    if tone > 0.0:
+        one_minus = _math(tree, "SUBTRACT", x0 + 1120, y0 - 560, a=1.0)
+        tree.links.new(depth01.outputs[0], one_minus.inputs[1])
+        fade = _math(tree, "MULTIPLY", x0 + 1250, y0 - 560, b=0.6 * tone)
+        tree.links.new(one_minus.outputs[0], fade.inputs[0])       # 1-shown
+        lin = _math(tree, "POWER", x0 + 1380, y0 - 560, b=2.2)
+        tree.links.new(fade.outputs[0], lin.inputs[0])
+        dk = _math(tree, "SUBTRACT", x0 + 1500, y0 - 560, a=1.0)
+        tree.links.new(lin.outputs[0], dk.inputs[1])
         shade = _math(tree, "MULTIPLY", x0 + 1560, y0 - 400)
         tree.links.new(cl.outputs[0], shade.inputs[0])
-        tree.links.new(tprev.outputs[0], shade.inputs[1])
+        tree.links.new(dk.outputs[0], shade.inputs[1])
         last = shade
 
     out = tree.nodes.new("CompositorNodeInvert")

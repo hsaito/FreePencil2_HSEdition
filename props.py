@@ -393,9 +393,9 @@ def register_props():
                 "grey while the thickest stays black. 0 = width only"
             ),
             # 太さは整数画素で頭打ち(line_weight.build_weight に実測)。
-            # 0.5 で一番細い段が表示 70% の灰色。1.0 だと輪郭が薄すぎた。
-            # 他の強弱のつまみと同じく、反映は STEP3 のやり直し
-            default=0.5, min=0.0, max=1.0, step=0.05, precision=2
+            # 0.5 だと輪郭が灰色になって汚く見えた。0.25 は見てほぼ黒のまま
+            # 少しだけ軽くなる。他の強弱のつまみと同じく反映は STEP3
+            default=0.25, min=0.0, max=1.0, step=0.05, precision=2
         ),
         "fp_lw_gain": FloatProperty(
             name="Weight darkness",

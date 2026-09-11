@@ -41,9 +41,8 @@ dm.OUT = OUT
 OUT.mkdir(parents=True, exist_ok=True)
 
 # (名前, 段, 濃さ)
-CANDS = [("now", (6, 5, 4, 3, 2), 0.0),
-         ("c8", (8, 6, 4, 3, 2), 0.5),
-         ("c12", (12, 8, 5, 3, 2), 0.5)]
+CANDS = [("t0", (12, 8, 5, 3, 2), 0.0),
+         ("t025", (12, 8, 5, 3, 2), 0.25)]
 MODELS = ["camera_2K", "lancia"]
 
 
