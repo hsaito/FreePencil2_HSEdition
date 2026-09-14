@@ -283,8 +283,9 @@ def count_loose_parts(mesh, stop_at: int = 0) -> int:
 #     basketball   縫い目が強くなった(18度では消えるので上げすぎない)
 #   スザンヌの耳が直るのが 13->14度 なので、これより下げると戻る。
 #
-# 呼ぶ側が floor を渡せるようにしてある。
-ARTIFICIAL_SPLIT_FLOOR = 14.0
+# 既定は v2.7 と同じ 5.0。STEP0 の仕上がり「強弱(手描き)」が 14.0 を
+# 渡す(auto_setup.py)。「精密(メカ)」は v2.7 の出力を変えない
+ARTIFICIAL_SPLIT_FLOOR = 5.0
 
 
 def choose_auto_threshold(angles_deg, has_armature=False, many_parts=False,

@@ -118,7 +118,7 @@ def main():
     # 倍率を見て太さとぼかしを pct/200 で割るので、その経路では太さが
     # 本来の半分で描かれていた(実測)。使う人は細線化 ON が既定
     sc.fp_auto_supersample = True
-    sc.fp_line_weight = True
+    sc.fp_auto_style = 'WEIGHTED'    # STEP0 が強弱・14度・稜線0.45・しきい値計測を入れる
     bpy.ops.object.select_all(action="DESELECT")
     o.select_set(True)
     bpy.context.view_layer.objects.active = o

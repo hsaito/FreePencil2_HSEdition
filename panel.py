@@ -69,6 +69,7 @@ class FP_PT_Step0(_FPSub, bpy.types.Panel):
         scene = context.scene
         col = layout.column(align=True)
         col.label(text=t("Recommended settings for this scene"), icon="INFO")
+        layout.prop(scene, "fp_auto_style", text=t("Finish"))
         col = layout.column(align=True)
         col.prop(scene, "fp_auto_sharp", text=t("Auto edge angle"))
         col.prop(scene, "fp_auto_seam", text=t("Seam/material boundaries"))

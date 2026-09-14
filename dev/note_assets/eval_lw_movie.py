@@ -172,9 +172,10 @@ def main() -> None:
     place(dist, 0.0)
     shoot(sc, place, dist, "off")
 
-    sc.fp_line_weight = True
-    # 島を切る細かさは STEP1 で決まる。強弱をONにしてから STEP0 を
-    # やり直さないと反映されない
+    # 仕上がりを「強弱(手描き)」にして STEP0 をやり直す。強弱・14度・
+    # 稜線0.45・しきい値の計測は全部 STEP0 が入れる。「なし」側は
+    # 「精密(メカ)」= v2.7 の出力そのもの
+    sc.fp_auto_style = 'WEIGHTED'
     bpy.ops.object.select_all(action="DESELECT")
     for o in meshes:
         o.select_set(True)

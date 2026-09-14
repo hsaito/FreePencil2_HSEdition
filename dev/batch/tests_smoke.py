@@ -1872,7 +1872,7 @@ def t46():
     import tempfile
     from freepencil2 import line_weight
     scene, _ = _lw_scene()
-    scene.fp_line_weight = True
+    scene.fp_auto_style = 'WEIGHTED'   # STEP0 が強弱を入れる
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     root = Path(tempfile.gettempdir())
     before = set(root.glob("fp_lw_*"))
@@ -1989,7 +1989,7 @@ def t48():
     scene.fp_auto_detect_aov = False
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
-    scene.fp_line_weight = True
+    scene.fp_auto_style = 'WEIGHTED'   # STEP0 が強弱を入れる
     scene.fp_supersample = False
     scene.fp_white_preview = True
     # 160x120 だと線幅(2倍で最大 12px)が絵を塗り潰して測れない(実測)
@@ -2106,6 +2106,46 @@ def t48():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("STEP0 finish: precise keeps the v2.7 values, weighted sets up line weight end to end")
+def t49():
+    # v2.8 は v2.7 を壊さない。STEP0 の仕上がり「精密」は v2.7 の値
+    # (下限5度・稜線0.25・強弱なし)をそのまま入れ、「強弱」は 14度・
+    # 0.45・強弱ON・しきい値の計測まで1ボタンで済ませる
+    from freepencil2 import line_weight
+
+    scene, _ = _lw_scene()
+    scene.fp_auto_style = 'PRECISE'
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    assert abs(scene.fp_auto_split_floor - 5.0) < 1e-6, scene.fp_auto_split_floor
+    assert abs(scene.fp_ridge_amount - 0.25) < 1e-6, scene.fp_ridge_amount
+    assert not scene.fp_line_weight, "精密なのに強弱が入った"
+    assert _lw_node_count(scene) == 0, "精密なのに強弱ノードが入った"
+
+    defaults = [getattr(scene, f"fp_lw_e{i}") for i in range(1, 5)]
+    scene.fp_auto_style = 'WEIGHTED'
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in scene.objects:
+        if o.type == "MESH":
+            o.select_set(True)
+            bpy.context.view_layer.objects.active = o
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    assert abs(scene.fp_auto_split_floor - 14.0) < 1e-6, scene.fp_auto_split_floor
+    assert abs(scene.fp_ridge_amount - 0.45) < 1e-6, scene.fp_ridge_amount
+    assert scene.fp_line_weight, "強弱なのに OFF のまま"
+    assert _lw_node_count(scene) > 0, "強弱なのにノードが入っていない"
+    edges = line_weight.edges_from_scene(scene)
+    assert edges != sorted(defaults), (
+        f"しきい値が測られていない(既定のまま): {edges}")
+    assert edges[0] < edges[-1], f"しきい値が単調でない: {edges}"
+
+    # 精密に戻すと強弱ノードが消えて、値も v2.7 に戻る
+    scene.fp_auto_style = 'PRECISE'
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    assert not scene.fp_line_weight and _lw_node_count(scene) == 0, "精密に戻らない"
+    assert abs(scene.fp_auto_split_floor - 5.0) < 1e-6
+    bpy.ops.wm.read_homefile(use_empty=True)
 
 
 def main():

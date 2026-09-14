@@ -131,10 +131,10 @@ def register_props():
                 "has no structural edges at all. Too low and a smoothly "
                 "curving surface gets cut across at an arbitrary place"
             ),
-            # 既定 14.0。BlenderKit 60体で確かめた値(utils.py の
-            # ARTIFICIAL_SPLIT_FLOOR に根拠)。この枝に落ちるのは4体だけで、
-            # 4体とも同じか良くなった
-            default=14.0, min=1.0, max=45.0, step=0.5, precision=1
+            # 既定 5.0 = v2.7 と同じ。STEP0 が仕上がり(fp_auto_style)ごとに
+            # 入れる: 精密 5.0 / 強弱 14.0。14 の根拠は utils.py の
+            # ARTIFICIAL_SPLIT_FLOOR
+            default=5.0, min=1.0, max=45.0, step=0.5, precision=1
         ),
         "fp_sharp_edges": FloatProperty(
             name="Line sharp edges",
@@ -501,6 +501,22 @@ def register_props():
                 ("gen", "Generate"), ("mat", "Material"),
             )
         },
+        # STEP0 の仕上がり。v2.7 の挙動を「精密」として残し、AO の強弱は
+        # 別のスタイルとして選ぶ。既定は精密(既存ファイルの出力を変えない)
+        "fp_auto_style": EnumProperty(
+            name="Finish",
+            description="What STEP0 aims for",
+            items=[
+                ('PRECISE', "Precise (mech)",
+                 "Uniform lines, every panel edge. Same output as v2.7"),
+                ('WEIGHTED', "Weighted (hand-drawn)",
+                 "Line weight from cavities (AO): the outline is thick and "
+                 "lines thin as they enter a crease. Smooth surfaces are "
+                 "split less (14 deg floor, ridge 0.45) and the AO "
+                 "thresholds are measured for this shot"),
+            ],
+            default='PRECISE'
+        ),
         # STEP0 全自動が適用する項目の個別ON/OFF
         **{
             name: BoolProperty(name=label, description=desc, default=default)
@@ -794,6 +810,7 @@ def unregister_props():
         "fp_auto_sharp", "fp_auto_seam", "fp_auto_merge", "fp_auto_part_tint",
         "fp_auto_bone", "fp_auto_aa", "fp_auto_hashed", "fp_auto_file_output",
         "fp_auto_detect_aov", "fp_auto_supersample", "fp_auto_white_preview",
+        "fp_auto_style",
         "fp_color_noise_scale", "fp_min_neighbor_color_distance",
         "fp_max_color_retries",
         "fp_use_random_seed", "fp_color_seed",

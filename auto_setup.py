@@ -79,6 +79,12 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
             return None
         view_layer.objects.active = targets[0]
 
+        # --- 仕上がり。精密 = v2.7 の出力そのまま、強弱 = AO の強弱 ---
+        weighted = getattr(scene, "fp_auto_style", 'PRECISE') == 'WEIGHTED'
+        # 人工分割の下限。14 の根拠は utils.ARTIFICIAL_SPLIT_FLOOR
+        scene.fp_auto_split_floor = 14.0 if weighted else 5.0
+        scene.fp_line_weight = weighted
+
         # --- おすすめ設定(STEP0 のチェックが入っている項目のみ適用) ---
         if scene.fp_auto_sharp:
             scene.fp_sharp_auto = True
@@ -98,8 +104,9 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
             # (最小 99.9%)、中央は 100/111/123/132% と増える一方だった。
             # 0.50 は上限で調整の余地が無く、ハンガーの屋根が詰まりはじめる。
             # メカと壺は全域で1画素も変わらない(平らな面では残差ゼロ)。
-            # スザンヌの口の輪郭は 0.45 でないと戻らない(下限14度と役割が別)
-            scene.fp_ridge_amount = 0.45
+            # スザンヌの口の輪郭は 0.45 でないと戻らない(下限14度と役割が別)。
+            # 精密(v2.7)は 0.25 のまま
+            scene.fp_ridge_amount = 0.45 if weighted else 0.25
             scene.fp_ridge_radius = 0.08
         if scene.fp_auto_part_tint:
             scene.fp_part_tint = True
@@ -151,6 +158,21 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         bpy.ops.freepencil4.link_button()
         bpy.ops.freepencil2.link_button()
 
+        # 強弱: しきい値はカットごとに違う(実モデル11体で15倍ひらく)ので、
+        # STEP3 が建った後に1回測って固定し、STEP3 を組み直す。
+        # ここで測らないと、使う人が「しきい値を測る」を押すまで既定値の
+        # まま動く
+        measured = None
+        if scene.fp_line_weight:
+            from . import line_weight
+            edges = line_weight.measure_edges(scene, context.view_layer)
+            if edges is not None:
+                for i, v in enumerate(edges, start=1):
+                    setattr(scene, f"fp_lw_e{i}", v)
+                bpy.ops.freepencil2.link_button()
+                measured = edges
+        info["measured"] = measured
+
         scene.render.film_transparent = info["film_transparent"]
 
         # 白マテリアルでプレビュー。線画がすぐ見える状態にして終わる。
@@ -170,8 +192,11 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
                 m.blend_method = "HASHED"
                 hashed += 1
 
-        msg = (f"meshes={len(info['targets'])}, "
+        style = getattr(scene, "fp_auto_style", 'PRECISE').lower()
+        msg = (f"style={style}, meshes={len(info['targets'])}, "
                f"bone_aov={'ON' if info['has_rig'] else 'OFF'}, hashed={hashed}"
+               + (f", lw_edges={'/'.join(f'{v:.3f}' for v in info['measured'])}"
+                  if info.get("measured") else "")
                + (f", detected_aov={'+'.join(info['detected'])}"
                   if info["detected"] else ""))
         print(f"[freepencil.auto_setup] {msg}")

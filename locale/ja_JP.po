@@ -629,3 +629,27 @@ msgstr "線の強弱のしきい値を測る"
 msgctxt "*"
 msgid "F12 renders at 2x. STEP5 writes the final size"
 msgstr "F12 は2倍で出ます。STEP5 は最終サイズで書き出します"
+
+msgctxt "*"
+msgid "Finish"
+msgstr "仕上がり"
+
+msgctxt "*"
+msgid "What STEP0 aims for"
+msgstr "STEP0 が目指す仕上がり"
+
+msgctxt "*"
+msgid "Precise (mech)"
+msgstr "精密(メカ)"
+
+msgctxt "*"
+msgid "Uniform lines, every panel edge. Same output as v2.7"
+msgstr "線は均一、パネルの縁を全部拾う。v2.7 と同じ出力"
+
+msgctxt "*"
+msgid "Weighted (hand-drawn)"
+msgstr "強弱(手描き)"
+
+msgctxt "*"
+msgid "Line weight from cavities (AO): the outline is thick and lines thin as they enter a crease. Smooth surfaces are split less (14 deg floor, ridge 0.45) and the AO thresholds are measured for this shot"
+msgstr "くぼみ(AO)で線に強弱: 輪郭は太く、くぼみに入る線ほど細い。なめらかな面は細かく割らず(下限14度・稜線0.45)、AO のしきい値をこのカットで測る"

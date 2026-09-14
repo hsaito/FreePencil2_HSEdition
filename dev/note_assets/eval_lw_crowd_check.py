@@ -60,7 +60,7 @@ def common(sc):
     sc.fp_auto_supersample = True
     sc.fp_color_seed = 42
     sc.fp_white_preview = True
-    sc.fp_line_weight = True
+    sc.fp_auto_style = 'WEIGHTED'    # STEP0 が強弱・14度・稜線0.45・しきい値計測を入れる
     sc.render.engine = fp_batch.eevee_engine()
     sc.eevee.taa_render_samples = 24
     sc.render.resolution_x = sc.render.resolution_y = RES
