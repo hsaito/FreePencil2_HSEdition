@@ -437,11 +437,16 @@ def register_props():
         "fp_lw_ao_blur": IntProperty(
             name="Cavity smoothing",
             description=(
-                "Blur the cavity map before cutting it into steps. "
+                "Blur the cavity map before it drives the width. "
                 "EEVEE's AO is ray-traced and grainy; the grain turns a "
-                "single stroke into a dashed line"
+                "single stroke into a dashed line. Larger = smoother "
+                "taper along a stroke"
             ),
-            default=4, min=0, max=32
+            # 4 -> 12 (2026-09-14)。太さは深さに連続に追従するので、深さを
+            # 線に沿ってならすと入り抜きがなめらかになる。4/12/24 を出荷
+            # どおりの経路で比べ、12 は眉の端がなめらかに細り、カメラの
+            # レンズと車も締まって見えた。24 は眉全体が太くなって差が消える
+            default=12, min=0, max=48
         ),
         "fp_lw_ao_dist": FloatProperty(
             name="Cavity radius",

@@ -41,8 +41,9 @@ dm.OUT = OUT
 OUT.mkdir(parents=True, exist_ok=True)
 
 # (名前, 段, 濃さ)
-CANDS = [("t0", (12, 8, 5, 3, 2), 0.0),
-         ("t025", (12, 8, 5, 3, 2), 0.25)]
+# (名前, 段, 濃さ, くぼみのぼかし)
+CANDS = [("b4", (12, 8, 5, 3, 2), 0.25, 4),
+         ("b12", (12, 8, 5, 3, 2), 0.25, 12)]
 MODELS = ["camera_2K", "lancia"]
 
 
@@ -52,16 +53,16 @@ def say(m):
 
 def common(sc):
     for p_ in ("fp_use_random_seed", "fp_enable_compositor_view",
-               "fp_auto_detect_aov", "fp_auto_white_preview",
-               "fp_auto_supersample", "fp_supersample"):
+               "fp_auto_detect_aov", "fp_auto_white_preview"):
         setattr(sc, p_, False)
+    # 出荷どおり: 細線化 ON (pct=200)。アドオンが太さを pct/200 で割る
+    sc.fp_auto_supersample = True
     sc.fp_color_seed = 42
     sc.fp_white_preview = True
     sc.fp_line_weight = True
     sc.render.engine = fp_batch.eevee_engine()
     sc.eevee.taa_render_samples = 24
-    sc.render.resolution_percentage = 100
-    sc.render.resolution_x = sc.render.resolution_y = RES * 2
+    sc.render.resolution_x = sc.render.resolution_y = RES
     sc.render.image_settings.file_format = "PNG"
     sc.render.image_settings.color_mode = "RGBA"
     sc.render.film_transparent = True
@@ -92,12 +93,15 @@ def shoot_variants(prefix):
     from freepencil2 import line_weight
     sc = bpy.context.scene
     orig = line_weight.LEVELS
-    for tag, levels, tone in CANDS:
+    for tag, levels, tone, blur in CANDS:
         line_weight.LEVELS = tuple(levels)
         sc.fp_lw_tone = tone
+        sc.fp_lw_ao_blur = blur
+        bpy.ops.freepencil.measure_line_weight()
         bpy.ops.freepencil2.link_button()
         sc.fp_white_preview = True
-        fp_batch.render_still(sc, OUT / f"{prefix}_{tag}.png", 2)
+        assert sc.render.resolution_percentage == 200
+        fp_batch.render_still(sc, OUT / f"{prefix}_{tag}.png", 1)
     line_weight.LEVELS = orig
     say(f"{prefix} 完了")
 

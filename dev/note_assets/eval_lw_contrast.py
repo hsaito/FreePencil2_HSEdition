@@ -46,9 +46,12 @@ dm.OUT = OUT
 OUT.mkdir(parents=True, exist_ok=True)
 
 # (名前, 段, 強さ倍率, 濃さの強弱)
-VARIANTS = [("sm_t0", (12, 8, 5, 3, 2), 1.0, 0.0),
-            ("sm_t025", (12, 8, 5, 3, 2), 1.0, 0.25),
-            ("sm_t05", (12, 8, 5, 3, 2), 1.0, 0.5)]
+# (名前, 段, 強さ倍率, 濃さの強弱, くぼみのぼかし px)
+# 太さの変わる速さは深さの変わる速さ。線に沿って入り抜きさせるには、
+# 深さを線に沿ってならす = AO のぼかしを広げる
+VARIANTS = [("blur4", (12, 8, 5, 3, 2), 1.0, 0.25, 4),
+            ("blur12", (12, 8, 5, 3, 2), 1.0, 0.25, 12),
+            ("blur24", (12, 8, 5, 3, 2), 1.0, 0.25, 24)]
 VIEWS = {"front": (20.0, 8.0), "quarter": (52.0, 10.0)}
 
 
@@ -108,8 +111,11 @@ def main():
     sc.fp_auto_detect_aov = False
     sc.fp_auto_white_preview = False
     sc.fp_white_preview = True
-    sc.fp_auto_supersample = False
-    sc.fp_supersample = False
+    # 出荷どおりの経路。細線化 ON (pct=200) にしてアドオンに縮小させる。
+    # 以前は pct=100 で解像度を2倍にして保存時に縮めていたが、アドオンは
+    # 倍率を見て太さとぼかしを pct/200 で割るので、その経路では太さが
+    # 本来の半分で描かれていた(実測)。使う人は細線化 ON が既定
+    sc.fp_auto_supersample = True
     sc.fp_line_weight = True
     bpy.ops.object.select_all(action="DESELECT")
     o.select_set(True)
@@ -118,9 +124,9 @@ def main():
     sc.fp_white_preview = True
     sc.render.engine = fp_batch.eevee_engine()
     sc.eevee.taa_render_samples = 32
-    sc.render.resolution_percentage = 100
-    sc.render.resolution_x = RES * 2
-    sc.render.resolution_y = RES * 2
+    assert sc.render.resolution_percentage == 200, "細線化が倍率に効いていない"
+    sc.render.resolution_x = RES
+    sc.render.resolution_y = RES
     sc.render.image_settings.file_format = "PNG"
     sc.render.image_settings.color_mode = "RGBA"
     sc.render.film_transparent = True
@@ -130,21 +136,26 @@ def main():
     say(f"しきい値 {edges}")
 
     orig = line_weight.LEVELS
-    for tag, levels, strength, tone in VARIANTS:
+    for tag, levels, strength, tone, blur in VARIANTS:
         line_weight.LEVELS = tuple(levels)
         sc.fp_lw_strength = strength
         sc.fp_lw_tone = tone
+        sc.fp_lw_ao_blur = blur
+        # ぼかしを変えると深さの分布も変わるので、しきい値は測り直す
+        aim(cam, *VIEWS["front"])
+        bpy.ops.freepencil.measure_line_weight()
         bpy.ops.freepencil2.link_button()        # STEP3 を組み直す
         sc.fp_white_preview = True
         px = line_weight.levels_from_scene(sc)
         for vn, (az, el) in VIEWS.items():
             aim(cam, az, el)
-            fp_batch.render_still(sc, OUT / f"{vn}_{tag}.png", 2)
-        say(f"{tag:<11} 段 {px}  最太÷最細 {px[0] / px[-1]:.1f}倍  濃さ {tone}")
+            fp_batch.render_still(sc, OUT / f"{vn}_{tag}.png", 1)
+        edges = [round(getattr(sc, f"fp_lw_e{i}"), 4) for i in range(1, 5)]
+        say(f"{tag:<11} ぼかし {blur:>2}px  しきい値 {edges}")
     line_weight.LEVELS = orig
     (OUT / "variants.json").write_text(json.dumps(
-        [{"tag": t, "levels": l, "strength": s, "tone": n}
-         for t, l, s, n in VARIANTS],
+        [{"tag": t, "levels": l, "strength": s, "tone": n, "blur": b}
+         for t, l, s, n, b in VARIANTS],
         ensure_ascii=False, indent=1), encoding="utf-8")
     say(f"完了 {OUT}")
 

@@ -127,7 +127,7 @@ def shoot(sc, place, dist, sub):
     for f in range(FRAMES):
         place(dist, math.radians(TURN * f / FRAMES))
         sc.frame_set(f + 1)
-        fp_batch.render_still(sc, OUT / sub / f"f{f:04d}.png", 2)
+        fp_batch.render_still(sc, OUT / sub / f"f{f:04d}.png", 1)
         if (f + 1) % 30 == 0:
             say(f"  {sub} {f + 1}/{FRAMES} ({time.time() - t:.0f}s)")
 
@@ -145,9 +145,11 @@ def main() -> None:
     sc.fp_auto_detect_aov = False
     sc.fp_auto_white_preview = False
     sc.fp_white_preview = True
-    # 縮小はアドオン側ではなく保存時に行う。アドオンの細線化は
-    # キャンバスがレンダー解像度のままなので、絵が黒い額縁に入る
-    sc.fp_auto_supersample = False
+    # 出荷どおり細線化 ON (pct=200) でアドオンに縮小させる。以前は
+    # pct=100 で解像度を2倍にして保存時に縮めていたが、アドオンは倍率を
+    # 見て太さとぼかしを pct/200 で割るので、その経路では強弱が本来の
+    # 半分で写っていた(実測)。F12 の額縁の件は render_size で直っている
+    sc.fp_auto_supersample = True
     # 以前はスザンヌ用に島0.3・稜線0.25・感度0.25 を手で入れていた
     # (v2.6.2 の土台で撮ったときの調整)。既定を 14度 + 稜線0.45 に
     # 変えたので、何も上書きせず STEP0 に任せる。使う人と同じ絵になる
@@ -158,12 +160,11 @@ def main() -> None:
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     sc.fp_white_preview = True
 
-    sc.fp_supersample = False
+    assert sc.render.resolution_percentage == 200, "細線化が倍率に効いていない"
     sc.render.engine = fp_batch.eevee_engine()
     sc.eevee.taa_render_samples = 32
-    sc.render.resolution_percentage = 100
-    sc.render.resolution_x = RES_W * 2
-    sc.render.resolution_y = RES_H * 2
+    sc.render.resolution_x = RES_W
+    sc.render.resolution_y = RES_H
     sc.render.image_settings.file_format = "PNG"
     sc.render.image_settings.color_mode = "RGBA"
     sc.render.film_transparent = True
