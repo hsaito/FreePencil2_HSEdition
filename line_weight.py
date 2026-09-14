@@ -352,6 +352,13 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     s_div.use_clamp = True
     tree.links.new(s_sub.outputs[0], s_div.inputs[0])
     depth01 = s_div
+    # どちらを太くするか。線画の常識は「輪郭が太く、内側の線が細い」で、
+    # くぼみに入る所で細くなるのが入り抜き。深い所を太くすると目や眉が
+    # 太く輪郭が細くなり、逆に見えた(実測、指摘あり)。既定は開いた所を太く
+    if not getattr(scene, "fp_lw_deep_thick", False):
+        flip = _math(tree, "SUBTRACT", x0 + 640, y0 - 460, a=1.0)
+        tree.links.new(s_div.outputs[0], flip.inputs[1])
+        depth01 = flip
 
     # 望む広がり hw = hw_min + (hw_max - hw_min) * s。Feather は芯で 1、
     # reach 離れると 0 に直線で落ちるので、しきい値 T = 1 - hw / reach で

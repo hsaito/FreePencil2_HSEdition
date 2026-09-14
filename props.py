@@ -386,6 +386,14 @@ def register_props():
             # 0.25 だと薄い線を落として点線になった。0.15 で繋がる
             default=0.15, min=0.02, max=0.8, step=0.01, precision=2
         ),
+        "fp_lw_deep_thick": BoolProperty(
+            name="Thick in cavities",
+            description=(
+                "Off: open areas (the outline) are thick and lines thin as "
+                "they enter a crease, like a pen drawing. On: the reverse"
+            ),
+            default=False
+        ),
         "fp_lw_tone": FloatProperty(
             name="Weight tone",
             description=(
@@ -774,7 +782,7 @@ def unregister_props():
         "fp_gen_color", "fp_mask_color", "fp_line_color",
         "fp_mat_color", "fp_bone_color", "fp_enable_compositor_view",
         "fp_include_antialiasing", "fp_line_sensitivity",
-        "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain", "fp_lw_tone",
+        "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain", "fp_lw_tone", "fp_lw_deep_thick",
         "fp_lw_ao_dist", "fp_lw_ao_blur", "fp_lw_crowd",
         "fp_lw_crowd_radius", "fp_lw_crowd_threshold", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",

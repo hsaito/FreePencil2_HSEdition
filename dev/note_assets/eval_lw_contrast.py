@@ -49,9 +49,11 @@ OUT.mkdir(parents=True, exist_ok=True)
 # (名前, 段, 強さ倍率, 濃さの強弱, くぼみのぼかし px)
 # 太さの変わる速さは深さの変わる速さ。線に沿って入り抜きさせるには、
 # 深さを線に沿ってならす = AO のぼかしを広げる
-VARIANTS = [("blur4", (12, 8, 5, 3, 2), 1.0, 0.25, 4),
-            ("blur12", (12, 8, 5, 3, 2), 1.0, 0.25, 12),
-            ("blur24", (12, 8, 5, 3, 2), 1.0, 0.25, 24)]
+# (名前, 段, 強さ倍率, 濃さ, ぼかし, くぼみを太く)
+# 「強弱が逆では」の指摘。輪郭を太く・くぼみで細く(線画の常識)と、
+# その逆(これまで)を並べる
+VARIANTS = [("outline", (12, 8, 5, 3, 2), 1.0, 0.25, 12, False),
+            ("cavity", (12, 8, 5, 3, 2), 1.0, 0.25, 12, True)]
 VIEWS = {"front": (20.0, 8.0), "quarter": (52.0, 10.0)}
 
 
@@ -136,11 +138,12 @@ def main():
     say(f"しきい値 {edges}")
 
     orig = line_weight.LEVELS
-    for tag, levels, strength, tone, blur in VARIANTS:
+    for tag, levels, strength, tone, blur, deep in VARIANTS:
         line_weight.LEVELS = tuple(levels)
         sc.fp_lw_strength = strength
         sc.fp_lw_tone = tone
         sc.fp_lw_ao_blur = blur
+        sc.fp_lw_deep_thick = deep
         # ぼかしを変えると深さの分布も変わるので、しきい値は測り直す
         aim(cam, *VIEWS["front"])
         bpy.ops.freepencil.measure_line_weight()
@@ -154,8 +157,8 @@ def main():
         say(f"{tag:<11} ぼかし {blur:>2}px  しきい値 {edges}")
     line_weight.LEVELS = orig
     (OUT / "variants.json").write_text(json.dumps(
-        [{"tag": t, "levels": l, "strength": s, "tone": n, "blur": b}
-         for t, l, s, n, b in VARIANTS],
+        [{"tag": t, "levels": l, "strength": s, "tone": n, "blur": b, "deep": d}
+         for t, l, s, n, b, d in VARIANTS],
         ensure_ascii=False, indent=1), encoding="utf-8")
     say(f"完了 {OUT}")
 

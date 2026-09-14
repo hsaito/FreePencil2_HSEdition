@@ -595,6 +595,10 @@ msgid "Weight tone"
 msgstr "濃さの強弱"
 
 msgctxt "*"
+msgid "Thick in cavities"
+msgstr "くぼみを太く(逆向き)"
+
+msgctxt "*"
 msgid "Keep crowded lines thin"
 msgstr "詰まった線は太らせない"
 

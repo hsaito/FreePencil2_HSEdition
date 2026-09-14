@@ -161,7 +161,7 @@ def main() -> None:
     # 1. タイトル
     for _ in range(fps):
         push(title_card(["線に強弱をつける"],
-                        ["くぼみが深いところほど太く、開いたところほど細く",
+                        ["開いたところ(輪郭)は太く、くぼみに入るほど細く",
                          "線の出かたも自動で少し弱めに切り替わる",
                          "FreePencil2 v2.8 開発中"]))
 
@@ -180,8 +180,8 @@ def main() -> None:
     for i in range(nw):
         t = (i + 1) / nw
         im = wipe(S.get("off", hold), S.get("on", hold), t)
-        push(caption(im, "くぼみで太らせる",
-                     "目と鼻のまわりが太く、頭頂の輪郭は細いまま"))
+        push(caption(im, "くぼみで強弱をつける",
+                     "輪郭は太く、くぼみに入る線ほど細く"))
 
     # 4. 強弱ありで1周
     for i in range(int(fps * 5.0)):

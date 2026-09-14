@@ -1956,7 +1956,7 @@ def t47():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
-@test("line weight: deeper cavities get wider ink, measured in the final image")
+@test("line weight: open areas get wider ink than cavities, measured in the final image")
 def t48():
     # 段分けが働いていなかった(計測は生の AO、合成はぼかした AO で
     # 線の画素の 88% が最細の段)うえに、段の向きも逆だった。47 本の
@@ -1968,12 +1968,33 @@ def t48():
     import tempfile
     from freepencil2 import compat, line_weight
 
-    scene, _ = _lw_scene()
+    # スザンヌは目のまわりに線が密集していて、窓の中に複数の線が入る。
+    # 太さではなく密度を測ってしまい、向きを直しても数字が逆に出た
+    # (実測: 深い 0.76 / 浅い 0.45)。外の輪郭(開いている)と穴の縁(くぼみ)
+    # が孤立した線で出るトーラスにする
+    import math
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_torus_add(major_segments=64, minor_segments=32)
+    obj = bpy.context.object
+    bpy.ops.object.shade_smooth()
+    scene = bpy.context.scene
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.location = (0, -4.5, 3.2)
+    cam.rotation_euler = (math.radians(55), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.fp_use_random_seed = False
+    scene.fp_color_seed = 7
+    scene.fp_enable_compositor_view = False
+    scene.fp_auto_detect_aov = False
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
     scene.fp_line_weight = True
     scene.fp_supersample = False
     scene.fp_white_preview = True
-    scene.render.resolution_x = 160
-    scene.render.resolution_y = 120
+    # 160x120 だと線幅(2倍で最大 12px)が絵を塗り潰して測れない(実測)
+    scene.render.resolution_x = 400
+    scene.render.resolution_y = 300
     scene.render.resolution_percentage = 200
     scene.render.film_transparent = True
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
@@ -2000,8 +2021,7 @@ def t48():
             binz = n
     assert dep is not None and binz is not None, "dep / binz が見つからない"
 
-    tmp = Path(tempfile.mkdtemp(prefix="fp_t48_"))
-    try:
+    def measure(tmp):
         fo = tree.nodes.new("CompositorNodeOutputFile")
         compat.file_output_set_dir(fo, str(tmp))
         compat.file_output_clear_slots(fo)
@@ -2027,14 +2047,14 @@ def t48():
         _, _, b = load(slot("binz"))
         fw, fh, f = load(str(tmp / "final.png"))
         assert (fw, fh) == (w, h), f"最終画像と dep の大きさが違う: {(fw, fh)} / {(w, h)}"
-        # 最終画像のインク(白地に黒線。透明は白扱い)
         ink = [0.0] * (w * h)
         for i in range(w * h):
             a = f[i * 4 + 3]
             g = (f[i * 4] + f[i * 4 + 1] + f[i * 4 + 2]) / 3.0
             ink[i] = (1.0 - g) * a
 
-        def around(i, r=3):
+        # 芯の周り 11x11 のインク。7x7 だと太い線で飽和して差が出ない
+        def around(i, r=5):
             y, x = divmod(i, w)
             tot = 0.0
             n = 0
@@ -2055,12 +2075,34 @@ def t48():
                 shallow.append(around(i))
         assert len(deep) > 30 and len(shallow) > 30, (
             f"深い/浅い線画素が少ない: {len(deep)} / {len(shallow)}  edges {edges}")
-        md = sum(deep) / len(deep)
-        ms = sum(shallow) / len(shallow)
-        # 深い所は芯の周りまで黒く、浅い所は芯だけ。壊れていた頃は
-        # 両方が同じ段だったのでほぼ等しかった
-        assert md > ms * 1.3, (
-            f"深い所が太くなっていない: 周りのインク 深い {md:.3f} / 浅い {ms:.3f}")
+        return sum(deep) / len(deep), sum(shallow) / len(shallow)
+
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t48_"))
+    try:
+        # 既定: 輪郭(開いた所)が太く、穴の縁(くぼみ)が細い
+        md, ms = measure(tmp)
+        assert ms > md * 1.2, (
+            f"開いた所が太くなっていない: 周りのインク 浅い {ms:.3f} / 深い {md:.3f}")
+        # 逆向きのスイッチ
+        scene.fp_lw_deep_thick = True
+        bpy.ops.freepencil2.link_button()
+        scene.fp_white_preview = True
+        tree = compat.get_compositor_tree(scene)
+        dep = binz = None
+        for n in tree.nodes:
+            if n.label != lab or n.type != "MATH":
+                continue
+            src = n.inputs[1].links[0].from_node if n.inputs[1].links else None
+            if (n.operation == "SUBTRACT" and src is not None and src.type == "BLUR"
+                    and abs(n.inputs[0].default_value - 1.0) < 1e-6):
+                dep = n
+            src0 = n.inputs[0].links[0].from_node if n.inputs[0].links else None
+            if (n.operation == "GREATER_THAN" and src0 is not None
+                    and src0.type == "INVERT" and binz is None):
+                binz = n
+        md2, ms2 = measure(tmp)
+        assert md2 > ms2 * 1.2, (
+            f"くぼみを太くが効いていない: 周りのインク 深い {md2:.3f} / 浅い {ms2:.3f}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         bpy.ops.wm.read_homefile(use_empty=True)

@@ -42,8 +42,9 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 # (名前, 段, 濃さ)
 # (名前, 段, 濃さ, くぼみのぼかし)
-CANDS = [("b4", (12, 8, 5, 3, 2), 0.25, 4),
-         ("b12", (12, 8, 5, 3, 2), 0.25, 12)]
+# (名前, 段, 濃さ, ぼかし, くぼみを太く)
+CANDS = [("outline", (12, 8, 5, 3, 2), 0.25, 12, False),
+         ("cavity", (12, 8, 5, 3, 2), 0.25, 12, True)]
 MODELS = ["camera_2K", "lancia"]
 
 
@@ -93,10 +94,11 @@ def shoot_variants(prefix):
     from freepencil2 import line_weight
     sc = bpy.context.scene
     orig = line_weight.LEVELS
-    for tag, levels, tone, blur in CANDS:
+    for tag, levels, tone, blur, deep in CANDS:
         line_weight.LEVELS = tuple(levels)
         sc.fp_lw_tone = tone
         sc.fp_lw_ao_blur = blur
+        sc.fp_lw_deep_thick = deep
         bpy.ops.freepencil.measure_line_weight()
         bpy.ops.freepencil2.link_button()
         sc.fp_white_preview = True
