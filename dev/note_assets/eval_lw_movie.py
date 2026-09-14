@@ -192,7 +192,7 @@ def main() -> None:
     place(dist, 0.0)
     bpy.ops.freepencil.measure_line_weight()
     edges = [round(getattr(sc, f"fp_lw_e{i}"), 5) for i in range(1, 5)]
-    say(f"しきい値(カット内で固定) {edges}")
+    say(f"しきい値(カット内で固定) {edges}  密度 {getattr(sc, 'fp_lw_density', -1):.3f}")
     bpy.ops.freepencil2.link_button()      # STEP3 をやり直す
     sc.fp_white_preview = True
     shoot(sc, place, dist, "on")
