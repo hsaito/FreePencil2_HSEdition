@@ -55,6 +55,7 @@ LEVELS = (12, 8, 5, 3, 2)
 NODE_LABEL = "FreePencil_line_weight"
 
 
+
 def effective_sensitivity(scene) -> float:
     """線の検出しきい値。強弱がONのときは弱め(=線を減らす)に倒す。
 
@@ -280,11 +281,29 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     inv.location = (x0, y0)
     inv.label = NODE_LABEL
     tree.links.new(line_sock, inv.inputs["Color"])
+    inv["fp_tap"] = "inv"
 
     # 2値化。薄い線も拾いたいのでしきい値は低め。ここで芯を作っておく
     # と、縮小したときに面積平均でアンチエイリアスが戻る
-    binz = _math(tree, "GREATER_THAN", x0 + 200, y0, b=binv)
-    tree.links.new(inv.outputs[0], binz.inputs[0])
+    # 芯は「その画素が濃い」だけでなく「周りも濃い」ことを条件にする。
+    # 薄い線は山がしきい値をまたいでまばらな点になり、その点が隣の
+    # 濃い線の濃さ(soft は max)で真っ黒に塗られて点線に見えた(実測:
+    # テレビのベゼル内側)。3px ぼかした線も一定以上ある画素だけを芯に
+    # すると、まばらな点は周りが薄いので外れ、濃い線(中心 1.0 で 2〜3px)
+    # は通る。外れた薄い線は元の線を重ねて残すので消えない
+    hard = _math(tree, "GREATER_THAN", x0 + 200, y0, b=binv)
+    tree.links.new(inv.outputs[0], hard.inputs[0])
+    nb = tree.nodes.new("CompositorNodeBlur")
+    nb.location = (x0 + 200, y0 + 90)
+    nb.label = NODE_LABEL
+    _set_blur(nb, 3)
+    tree.links.new(inv.outputs[0], nb.inputs[0])
+    solid = _math(tree, "GREATER_THAN", x0 + 320, y0 + 90, b=binv * 0.65)
+    tree.links.new(nb.outputs[0], solid.inputs[0])
+    binz = _math(tree, "MULTIPLY", x0 + 440, y0)
+    tree.links.new(hard.outputs[0], binz.inputs[0])
+    tree.links.new(solid.outputs[0], binz.inputs[1])
+    binz["fp_tap"] = "binz"
 
     dep = dep_chain(tree, ao_sock, alpha_sock, scene, x0, y0)
 
@@ -299,25 +318,7 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     # ここでは「詰まっている場所では太らせる前の線に戻す」形にする。
     # 段を一番細いところへ倒すだけでは足りなかった(耳の帯は残った)。
     crowd = max(0.0, min(1.0, float(getattr(scene, "fp_lw_crowd", 0.0))))
-    crowd_w = None
-    if crowd > 0.0:
-        dens = tree.nodes.new("CompositorNodeBlur")
-        dens.location = (x0 + 380, y0 - 60)
-        dens.label = NODE_LABEL
-        _set_blur(dens, max(1, int(getattr(scene, "fp_lw_crowd_radius", 5))))
-        tree.links.new(binz.outputs[0], dens.inputs[0])
-        # しきい値を超えた分だけを 0..1 にする
-        th = float(getattr(scene, "fp_lw_crowd_threshold", 0.25))
-        sub = _math(tree, "SUBTRACT", x0 + 560, y0 - 60, b=th)
-        tree.links.new(dens.outputs[0], sub.inputs[0])
-        div = _math(tree, "DIVIDE", x0 + 560, y0 - 150, b=max(1e-3, 1.0 - th))
-        tree.links.new(sub.outputs[0], div.inputs[0])
-        cl0 = _math(tree, "MINIMUM", x0 + 700, y0 - 60, b=1.0)
-        tree.links.new(div.outputs[0], cl0.inputs[0])
-        cl1 = _math(tree, "MAXIMUM", x0 + 700, y0 - 150, b=0.0)
-        tree.links.new(cl0.outputs[0], cl1.inputs[0])
-        crowd_w = _math(tree, "MULTIPLY", x0 + 840, y0 - 60, b=crowd)
-        tree.links.new(cl1.outputs[0], crowd_w.inputs[0])
+    crowd_w = None   # 後で「閉じで埋まる隙間」から作る(reach が要る)
 
     # 太さは段ではなく連続に決める。
     #
@@ -336,12 +337,26 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     # 2倍レンダなら 1..6 で、縮小後の太さは 2..7px
     hw_min = float(min(levels))
     hw_max = float(max(levels))
-    reach = int(math.ceil(hw_max)) + 1
+    # Feather は芯で 1、reach 離れると 0 に直線で落ちる。裾(値が 0 に
+    # 近い所)は距離の近似で周期的な凹凸が出て、しきい値がそこに掛かると
+    # 本体から離れた点が並ぶ(実測: テレビのベゼルの内側に点線)。裾を
+    # 使わないよう、最大の広がりの 1.5 倍を半径にしてしきい値が 1/3 より
+    # 下がらないようにする
+    reach = int(math.ceil(hw_max * 1.5)) + 1
     fe = tree.nodes.new("CompositorNodeDilateErode")
     fe.location = (x0 + 940, y0 - 360)
     fe.label = NODE_LABEL
     _set_feather(fe, reach)
     tree.links.new(binz.outputs[0], fe.inputs[0])
+    # Feather の距離は斜めの縁で階段状に落ちる(実測: 平板の縁に周期的な
+    # うねり)。少しぼかして階段をならす。芯の値は 1 のまま
+    fes = tree.nodes.new("CompositorNodeBlur")
+    fes.location = (x0 + 1030, y0 - 360)
+    fes.label = NODE_LABEL
+    _set_blur(fes, 3)
+    tree.links.new(fe.outputs[0], fes.inputs[0])
+    fe = fes
+    fe["fp_tap"] = "feather"
 
     # 深さを 0..1 に。20% 点より浅ければ 0、80% 点より深ければ 1
     e_lo, e_hi = edges[0], edges[-1]
@@ -363,16 +378,97 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     # 望む広がり hw = hw_min + (hw_max - hw_min) * s。Feather は芯で 1、
     # reach 離れると 0 に直線で落ちるので、しきい値 T = 1 - hw / reach で
     # 「芯から hw まで」が線になる
+    if crowd > 0.0:
+        # 詰まりの守り。「太らせたら隣の線とつながるか」を直接測る。
+        # 線の密度(ぼかした芯)で測っていた頃は、密度の尺度が線幅と合わず
+        # 帆船の船体や機関車のボイラーが黒い塊になった(実測)。
+        # 芯を r だけ膨らませてから同じだけ縮める(閉じ)と、間隔が 2r より
+        # 狭い線の間だけが埋まる。その埋まった所 = 広げるとつながる所。
+        # 1段だけだと「間隔が 2r より広いが、両側から伸びると埋まる」
+        # 隙間が残って網目が面に見えた(実測: 甲板 29% -> 34%)。半径を
+        # 3段(reach の 1/2, 1, 2 倍)にして、狭いほど強く抑える:
+        #   間隔 < reach      広げない
+        #   間隔 < 2*reach    1/3 だけ
+        #   間隔 < 4*reach    2/3 まで
+        # 隙間は線の上では 0 なので、線側へ少し広げて線の縁まで届かせる
+        # (ぼかすと隣で 0.5 になり、半分だけ太った。実測)
+        levels_r = ((max(1, reach // 2), 1.0), (reach, 0.66), (reach * 2, 0.33))
+        acc = None
+        for k, (r, wgt) in enumerate(levels_r):
+            yy = y0 - 60 - k * 90
+            dil = tree.nodes.new("CompositorNodeDilateErode")
+            dil.location = (x0 + 380, yy)
+            dil.label = NODE_LABEL
+            _set_dilate(dil, r)
+            tree.links.new(binz.outputs[0], dil.inputs[0])
+            ero = tree.nodes.new("CompositorNodeDilateErode")
+            ero.location = (x0 + 500, yy)
+            ero.label = NODE_LABEL
+            _set_dilate(ero, -r)
+            tree.links.new(dil.outputs[0], ero.inputs[0])
+            gap = _math(tree, "SUBTRACT", x0 + 620, yy)
+            tree.links.new(ero.outputs[0], gap.inputs[0])
+            tree.links.new(binz.outputs[0], gap.inputs[1])
+            gap.use_clamp = True
+            near = tree.nodes.new("CompositorNodeDilateErode")
+            near.location = (x0 + 740, yy)
+            near.label = NODE_LABEL
+            _set_dilate(near, 3)
+            tree.links.new(gap.outputs[0], near.inputs[0])
+            wg = _math(tree, "MULTIPLY", x0 + 860, yy, b=wgt)
+            tree.links.new(near.outputs[0], wg.inputs[0])
+            if acc is None:
+                acc = wg
+            else:
+                mx = _math(tree, "MAXIMUM", x0 + 980, yy)
+                tree.links.new(acc.outputs[0], mx.inputs[0])
+                tree.links.new(wg.outputs[0], mx.inputs[1])
+                acc = mx
+        crowd_w = _math(tree, "MULTIPLY", x0 + 1100, y0 - 60, b=crowd)
+        tree.links.new(acc.outputs[0], crowd_w.inputs[0])
+        crowd_w["fp_tap"] = "crowd"
+
     hw = _math(tree, "MULTIPLY_ADD", x0 + 700, y0 - 360, b=hw_max - hw_min)
     hw.inputs[2].default_value = hw_min
     tree.links.new(depth01.outputs[0], hw.inputs[0])
+    if crowd_w is not None:
+        # 詰まっている所は広がりをゼロ(芯だけ)まで縮める。以前は太らせた
+        # 絵と元の線を混ぜていたが、混ぜると半端な灰色になり、密度が線に
+        # 沿って揺れると太い区間と細い区間が交互に出て点線に見えた(実測:
+        # テレビのベゼル)。上乗せ分だけ縮めるのでは足りない: 帆船の船体は
+        # 線の間隔が 2倍レンダで 4px しかなく、最細の +2px でも隣と
+        # つながって塊になった(実測)。芯が消えないよう、しきい値に小さな
+        # 余裕を入れる(Feather の芯の値はちょうど 1.0 で、> 1.0 は偽)
+        keep = _math(tree, "SUBTRACT", x0 + 700, y0 - 460, a=1.0)
+        tree.links.new(crowd_w.outputs[0], keep.inputs[1])
+        hw2 = _math(tree, "MULTIPLY", x0 + 780, y0 - 420)
+        tree.links.new(hw.outputs[0], hw2.inputs[0])
+        tree.links.new(keep.outputs[0], hw2.inputs[1])
+        hw = hw2
     thr = _math(tree, "MULTIPLY_ADD", x0 + 860, y0 - 460, b=-1.0 / reach)
-    thr.inputs[2].default_value = 1.0
+    thr.inputs[2].default_value = 1.0 - 1e-3     # 芯(=1.0)は必ず通す
     tree.links.new(hw.outputs[0], thr.inputs[0])
     ink = _math(tree, "GREATER_THAN", x0 + 1120, y0 - 360)
     tree.links.new(fe.outputs[0], ink.inputs[0])
     tree.links.new(thr.outputs[0], ink.inputs[1])
-    prev = ink
+    thr["fp_tap"] = "thr"
+    hw["fp_tap"] = "hw"
+    # 太らせた領域の先端は Feather の値がしきい値ぎりぎりで、AO の粒で
+    # しきい値が揺れると本体から離れた孤立点になる(実測: テレビのベゼル
+    # の内側に点線が並んだ)。ぼかした ink が半分に満たない画素は孤立点
+    # なので落とす。細い芯がここで落ちても元の線を後で重ねるので消えない
+    ib = tree.nodes.new("CompositorNodeBlur")
+    ib.location = (x0 + 1240, y0 - 460)
+    ib.label = NODE_LABEL
+    _set_blur(ib, 2)
+    tree.links.new(ink.outputs[0], ib.inputs[0])
+    dense = _math(tree, "GREATER_THAN", x0 + 1360, y0 - 460, b=0.5)
+    tree.links.new(ib.outputs[0], dense.inputs[0])
+    ink2 = _math(tree, "MULTIPLY", x0 + 1480, y0 - 360)
+    tree.links.new(ink.outputs[0], ink2.inputs[0])
+    tree.links.new(dense.outputs[0], ink2.inputs[1])
+    ink2["fp_tap"] = "ink"
+    prev = ink2
 
     # 元の線の濃さを取り戻す。
     # 2値化は 0.15 を境に 0/1 へ倒すので、線の「濃さ」を変える既存機能が
@@ -390,26 +486,27 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     tree.links.new(prev.outputs[0], keep_ink.inputs[0])
     tree.links.new(soft.outputs[0], keep_ink.inputs[1])
     prev = keep_ink
-
-    if crowd_w is not None:
-        # 詰まっているところは、太らせる前の線へ戻す
-        keep = _math(tree, "SUBTRACT", x0 + 1180, y0 - 300, a=1.0)
-        tree.links.new(crowd_w.outputs[0], keep.inputs[1])
-        fat = _math(tree, "MULTIPLY", x0 + 1180, y0 - 400)
-        tree.links.new(prev.outputs[0], fat.inputs[0])
-        tree.links.new(keep.outputs[0], fat.inputs[1])
-        raw = _math(tree, "MULTIPLY", x0 + 1180, y0 - 500)
-        tree.links.new(binz.outputs[0], raw.inputs[0])
-        tree.links.new(crowd_w.outputs[0], raw.inputs[1])
-        prev = _math(tree, "ADD", x0 + 1250, y0 - 400)
-        tree.links.new(fat.outputs[0], prev.inputs[0])
-        tree.links.new(raw.outputs[0], prev.inputs[1])
+    soft["fp_tap"] = "soft"
+    keep_ink["fp_tap"] = "keep"
 
     g = _math(tree, "MULTIPLY", x0 + 1320, y0 - 400, b=gain)
     tree.links.new(prev.outputs[0], g.inputs[0])
-    cl = _math(tree, "MINIMUM", x0 + 1480, y0 - 400, b=1.0)
-    tree.links.new(g.outputs[0], cl.inputs[0])
+    cl_w = _math(tree, "MINIMUM", x0 + 1480, y0 - 400, b=1.0)
+    tree.links.new(g.outputs[0], cl_w.inputs[0])
+
+    # 元の線を足し戻す。
+    # 芯(binz)は「線 > しきい値」の2値化で、細い線が密集して灰色に
+    # 見える所(帆船の船体、機関車のボイラー)は全部が芯になって塗り
+    # 潰れた(実測: 太らせる前の芯の段階で既に黒い塊)。しきい値を上げれば
+    # 塊は消えるが、薄い線が芯から外れて消える(0.25 で点線になった)。
+    # 芯はしきい値を上げて「はっきりした線」だけにし、芯から外れた薄い
+    # 線と灰色は元の線をそのまま重ねて残す(精密と同じ見え方になる)
+    cl = _math(tree, "MAXIMUM", x0 + 1520, y0 - 300)
+    tree.links.new(cl_w.outputs[0], cl.inputs[0])
+    tree.links.new(inv.outputs[0], cl.inputs[1])
     last = cl
+    cl_w["fp_tap"] = "gained"
+    cl["fp_tap"] = "maxed"
 
     # 濃さでも強弱をつける。太さと同じ深さ s から連続に決める。
     # 一番深い所は黒のまま、一番浅い所は表示で (1 - 0.6*tone) まで薄く。
@@ -434,12 +531,19 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
         tree.links.new(cl.outputs[0], shade.inputs[0])
         tree.links.new(dk.outputs[0], shade.inputs[1])
         last = shade
+        shade["fp_tap"] = "shade"
 
     out = tree.nodes.new("CompositorNodeInvert")
     out.location = (x0 + 1660, y0 - 400)
     out.label = NODE_LABEL
     tree.links.new(last.outputs[0], out.inputs["Color"])
-    return out.outputs[0]
+    out["fp_tap"] = "out"
+    dep["fp_tap"] = "dep"
+    # 2つ目は「線を描いた画素」。輪郭を外側へ太らせた分はシルエットの
+    # 外にあってレンダーレイヤーのアルファが 0 なので、透明背景では
+    # 消える(実測: テレビの外周が半分だけ、灰色に見えた)。呼ぶ側が
+    # アルファにも立てる
+    return out.outputs[0], last.outputs[0]
 
 
 def scene_radius(scene) -> float:
@@ -498,11 +602,25 @@ def apply(scene, view_layer, tree, target_socket):
     if ao is None:
         return None
     line_sock = target_socket.links[0].from_socket
-    out = build_weight(tree, line_sock, ao, scene,
-                       alpha_sock=rl.outputs.get("Alpha"))
+    out, ink_sock = build_weight(tree, line_sock, ao, scene,
+                                 alpha_sock=rl.outputs.get("Alpha"))
     for lnk in list(target_socket.links):
         tree.links.remove(lnk)
     tree.links.new(out, target_socket)
+    # 線を描いた画素はアルファも立てる。輪郭を外側へ太らせた分は
+    # シルエットの外でアルファが 0 になり、透明背景では消えていた
+    node = target_socket.node
+    if node.type == "SETALPHA" and "Alpha" in node.inputs:
+        asock = node.inputs["Alpha"]
+        mx = _math(tree, "MAXIMUM", node.location.x - 200, node.location.y - 200)
+        if asock.is_linked:
+            tree.links.new(asock.links[0].from_socket, mx.inputs[0])
+            for lnk in list(asock.links):
+                tree.links.remove(lnk)
+        else:
+            mx.inputs[0].default_value = float(asock.default_value)
+        tree.links.new(ink_sock, mx.inputs[1])
+        tree.links.new(mx.outputs[0], asock)
     return out
 
 

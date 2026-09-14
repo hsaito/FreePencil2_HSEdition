@@ -223,11 +223,8 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         sub.prop(scene, "fp_lw_deep_thick", text=t("Thick in cavities"))
         sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
                  slider=True)
-        sub2 = sub.column(align=True)
-        sub2.enabled = scene.fp_lw_crowd > 0.0
-        sub2.prop(scene, "fp_lw_crowd_radius", text=t("Crowding radius"))
-        sub2.prop(scene, "fp_lw_crowd_threshold", text=t("Crowding threshold"),
-                  slider=True)
+        # 半径としきい値は無くなった。詰まりは「太らせたら隣とつながるか」
+        # を閉じ(膨張→収縮)で直接測るので、つまみは強さだけ
         # しきい値は絵ごとに15倍ひらくので固定値では配れない。
         # 1カットに1回測って固定する
         sub.operator("freepencil.measure_line_weight",

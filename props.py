@@ -366,7 +366,10 @@ def register_props():
             #   島0.4 線1.8  口が消える
             # メカ側は 1.8 のほうが綺麗になる(車 7.85% -> 7.38%)ので、
             # メカ中心のカットでは手で上げる
-            default=1.2, min=1.0, max=4.0, step=0.1, precision=2,
+            # 1.2 -> 1.0。感度を弱めると検出の境目にある薄い線がとびとびになり、
+            # 点線に見えた(実測: テレビのベゼル内側の線)。線の量は精密と
+            # 同じにして、強弱は太さと濃さだけで付ける
+            default=1.0, min=1.0, max=4.0, step=0.1, precision=2,
             update=_update_line_tuning
         ),
         "fp_lw_strength": FloatProperty(
@@ -383,8 +386,13 @@ def register_props():
                 "How dark a pixel must be to count as line before "
                 "thickening. Lower = faint lines survive"
             ),
-            # 0.25 だと薄い線を落として点線になった。0.15 で繋がる
-            default=0.15, min=0.02, max=0.8, step=0.01, precision=2
+            # 0.15 だと、細い線が密集して灰色に見える所が全部芯になって
+            # 塗り潰れた(帆船・機関車)。0.5 でも、薄い線(山が 0.5 前後)の
+            # 芯がとびとびになり、その点が隣の濃い線の濃さで黒く塗られて
+            # 点線に見えた(テレビのベゼル内側)。0.7 で「中心が黒い線」
+            # だけを芯にする。芯から外れた薄い線は元の線を重ねて残すので
+            # 消えない(以前 0.25 で点線になったのは足し戻しが無かった頃)
+            default=0.7, min=0.02, max=0.9, step=0.01, precision=2
         ),
         "fp_lw_deep_thick": BoolProperty(
             name="Thick in cavities",
@@ -411,7 +419,11 @@ def register_props():
                 "Lift the ink after the 50% shrink so the thin steps stay "
                 "black"
             ),
-            default=1.4, min=1.0, max=3.0, step=0.05, precision=2
+            # 1.4 -> 1.0。薄い線の芯はしきい値をまたいでとびとびになり、
+            # そこだけ持ち上げると点線に見えた(実測: テレビのベゼルの
+            # 内側の線)。元の線は MAX で足し戻すので、持ち上げなくても
+            # 消えない。強い線は元から 1.0 なので gain は要らない
+            default=1.0, min=1.0, max=3.0, step=0.05, precision=2
         ),
         "fp_lw_crowd": FloatProperty(
             name="Keep crowded lines thin",

@@ -2148,6 +2148,64 @@ def t49():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("line weight: ink grown outside the silhouette is opaque on a transparent film")
+def t50():
+    # 輪郭を外側へ太らせた分はシルエットの外にあり、レンダーレイヤーの
+    # アルファが 0。Set Alpha がそれをそのまま使うと透明背景で消える
+    # (実測: テレビの外周が半分だけ、灰色に見えた)。線を描いた画素は
+    # アルファも立てる。精密と強弱を同じ場面で描き、アルファの左端が
+    # 強弱では外側へ広がることで確かめる(5.x は透明画素の RGB が黒
+    # なので、色では探せない)
+    import math
+    import shutil
+    import tempfile
+
+    def render(style, path):
+        bpy.ops.wm.read_homefile(use_empty=True)
+        bpy.ops.mesh.primitive_uv_sphere_add(segments=48, ring_count=24)
+        obj = bpy.context.object
+        bpy.ops.object.shade_smooth()
+        scene = bpy.context.scene
+        cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+        cam.location = (0, -5, 0)
+        cam.rotation_euler = (math.radians(90), 0, 0)
+        scene.collection.objects.link(cam)
+        scene.camera = cam
+        scene.fp_use_random_seed = False
+        scene.fp_color_seed = 7
+        scene.fp_enable_compositor_view = False
+        scene.fp_auto_detect_aov = False
+        scene.fp_auto_style = style
+        scene.render.resolution_x = 240
+        scene.render.resolution_y = 180
+        scene.render.film_transparent = True
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        scene.fp_white_preview = True
+        scene.render.film_transparent = True
+        scene.render.filepath = str(path)
+        bpy.ops.render.render(write_still=True)
+        img = bpy.data.images.load(str(path))
+        w, h = img.size
+        buf = [0.0] * (w * h * 4)
+        img.pixels.foreach_get(buf)
+        bpy.data.images.remove(img)
+        y = h // 2
+        # 中央の行で、アルファが立っている一番左の画素
+        return next(x for x in range(w) if buf[(y * w + x) * 4 + 3] > 0.5)
+
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t50_"))
+    try:
+        xp = render('PRECISE', tmp / "p.png")
+        xw = render('WEIGHTED', tmp / "w.png")
+        assert xw < xp, (
+            f"太らせた輪郭のアルファが外へ広がっていない: 精密 x={xp} / 強弱 x={xw}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()
