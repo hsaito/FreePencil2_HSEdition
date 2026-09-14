@@ -35,6 +35,7 @@ MODEL = arg("--model", "suzanne")
 
 sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES_W), "--ss", "1"]
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / "batch"))
 import make_demo_movie as dm      # noqa: E402
 import bpy                        # noqa: E402
 import fp_batch                   # noqa: E402
@@ -62,7 +63,13 @@ def build():
         return [o]
     blend = dm.find_blend(MODEL)
     if blend is None:
-        raise SystemExit(f"見つからない: {MODEL}")
+        # 名前の一部でも引けるように
+        import scan_models
+        hit = next((m["path"] for m in scan_models.scan(scan_models.DEFAULT_ROOT)
+                    if MODEL in Path(m["path"]).stem), None)
+        if hit is None:
+            raise SystemExit(f"見つからない: {MODEL}")
+        blend = hit
     meshes, _ = dm.load(blend)
     return meshes
 

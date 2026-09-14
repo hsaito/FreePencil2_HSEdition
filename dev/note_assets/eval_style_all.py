@@ -162,6 +162,7 @@ def run_one(path, style, png):
     m["edges"] = [round(getattr(sc, f"fp_lw_e{i}"), 4) for i in range(1, 5)]
     m["lw_nodes"] = lw_nodes(sc)
     m["floor"] = sc.fp_auto_split_floor
+    m["density"] = round(float(getattr(sc, "fp_lw_density", -1.0)), 4)
     m["ridge"] = round(sc.fp_ridge_amount, 2)
     return m
 
@@ -199,7 +200,7 @@ def main():
         rows.append({"model": name, "precise": p, "weighted": w, "flags": flags})
         say(f"{name:<30} 真っ黒 {p['black_rate']:5.1f}->{w['black_rate']:5.1f}%  "
             f"インク {p['ink_pct']:6.2f}->{w['ink_pct']:6.2f}%  "
-            f"しきい値 {w['edges']}  {' / '.join(flags)}")
+            f"密度 {w['density']:.3f}  しきい値 {w['edges']}  {' / '.join(flags)}")
     (OUT / "all.json").write_text(json.dumps(
         {"res": RES, "rows": rows}, ensure_ascii=False, indent=1), encoding="utf-8")
     bad = [r for r in rows if r["flags"]]

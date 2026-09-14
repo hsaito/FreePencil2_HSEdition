@@ -394,6 +394,15 @@ def register_props():
             # 消えない(以前 0.25 で点線になったのは足し戻しが無かった頃)
             default=0.7, min=0.02, max=0.9, step=0.01, precision=2
         ),
+        "fp_lw_density": FloatProperty(
+            name="Measured line density",
+            description=(
+                "Share of the silhouette covered by lines, read by the "
+                "threshold measurement. Dense models get a lower maximum "
+                "width automatically"
+            ),
+            default=0.0, min=0.0, max=1.0, precision=3
+        ),
         "fp_lw_deep_thick": BoolProperty(
             name="Thick in cavities",
             description=(
@@ -810,7 +819,7 @@ def unregister_props():
         "fp_gen_color", "fp_mask_color", "fp_line_color",
         "fp_mat_color", "fp_bone_color", "fp_enable_compositor_view",
         "fp_include_antialiasing", "fp_line_sensitivity",
-        "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain", "fp_lw_tone", "fp_lw_deep_thick",
+        "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain", "fp_lw_tone", "fp_lw_deep_thick", "fp_lw_density",
         "fp_lw_ao_dist", "fp_lw_ao_blur", "fp_lw_crowd",
         "fp_lw_crowd_radius", "fp_lw_crowd_threshold", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",

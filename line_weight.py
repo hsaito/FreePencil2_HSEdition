@@ -337,6 +337,18 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     # 2倍レンダなら 1..6 で、縮小後の太さは 2..7px
     hw_min = float(min(levels))
     hw_max = float(max(levels))
+    # 密なモデルは最大幅を下げる。帆船の索具や機関車の足回りは、間隔が
+    # 中くらいの線が全部太って画面が重くなった(実測)。詰まりの守りは
+    # 「隣とつながる所」しか止めないので、全体の密度で天井を下げる。
+    # 密度は measure_edges が 100%(最終の大きさ)で測る。フルHD の実測:
+    #   スザンヌ 0.02 / カメラ 0.22 / ランチア 0.23 / メカ 0.41 /
+    #   機関車 0.42 / 帆船 0.55
+    #   密度 5% 以下      そのまま
+    #   密度 50% 以上     最大幅を 1/4 に
+    #   間は直線で補間(カメラ 0.72、メカ 0.40、機関車 0.38)
+    dens = float(getattr(scene, "fp_lw_density", 0.0))
+    t = max(0.0, min(1.0, (dens - 0.05) / 0.45))
+    hw_max = hw_min + (hw_max - hw_min) * (1.0 - 0.75 * t)
     # Feather は芯で 1、reach 離れると 0 に直線で落ちる。裾(値が 0 に
     # 近い所)は距離の近似で周期的な凹凸が出て、しきい値がそこに掛かると
     # 本体から離れた点が並ぶ(実測: テレビのベゼルの内側に点線)。裾を
@@ -693,7 +705,7 @@ def _source_before_scale(socket):
     return None
 
 
-def measure_edges(scene, view_layer, percent=50):
+def measure_edges(scene, view_layer, percent=100):
     """1回レンダして、線の画素における d = 1 - AO の分位点を返す。
 
     絵ごとに 15 倍ひらくので固定値では配れない。カットごとに1回
@@ -702,7 +714,9 @@ def measure_edges(scene, view_layer, percent=50):
     d は合成と同じ鎖(dep_chain: 背景埋め -> ぼかし -> 1-AO)を通し、
     EXR(float)で読む。生の AO を PNG で読んでいたときは 8bit の
     量子化で最初のしきい値が 1/255 = 0.0039 になっていた(実測)。
-    ぼかしはレンダー倍率で割るので、50% で測っても 200% と同じ広さ。
+    ぼかしはレンダー倍率で割るので、倍率が違っても同じ広さ。
+    100%(= 細線化 200% の半分、最終の大きさ)で測る。50% だと線の太さが
+    モデルに対して倍になり、密度が 0.08 -> 0.5 に膨れた(実測)。
     """
     import numpy as np
     # 5.x は scene.node_tree が無く、コンポジタはノードグループになった。
@@ -727,7 +741,16 @@ def measure_edges(scene, view_layer, percent=50):
     # 名前も構造も違うので compat 経由で触る
     compat.file_output_set_dir(fo, tmp)
     compat.file_output_clear_slots(fo)
-    line_src = _source_before_scale(comp.inputs[0])
+    # 強弱の鎖が既に組んであると、合成の入り口を辿った先は太らせた後の
+    # 絵になる(実測: 密度が 0.08 -> 0.54 に膨れ、しきい値も太らせた画素で
+    # 決まっていた)。鎖の入口(元の線)を読む
+    line_src = None
+    for n in tree.nodes:
+        if n.label == NODE_LABEL and n.get("fp_tap") == "inv"                 and n.inputs["Color"].is_linked:
+            line_src = n.inputs["Color"].links[0].from_socket
+            break
+    if line_src is None:
+        line_src = _source_before_scale(comp.inputs[0])
     if line_src is None:
         tree.nodes.remove(fo)
         return None
@@ -768,6 +791,16 @@ def measure_edges(scene, view_layer, percent=50):
         fo.format.view_settings.look = "None"
     except (AttributeError, TypeError):
         pass
+    # 線だけを測る。合成の入り口は「ビューティの上に線」なので、白
+    # プレビューが切れているとモデルの陰影が線として数えられ、密度が
+    # 0.5〜0.9 になり、しきい値も陰影の AO で決まっていた(実測: STEP0 は
+    # 白プレビューを最後に立てるので、計測は必ず陰影付きで走っていた)。
+    # 計測の間だけ白にして、終わったら戻す
+    from . import fp_core
+    was_white = bool(getattr(scene, "fp_white_preview", False))
+    if not was_white:
+        fp_core.set_white_preview(
+            scene, True, keep_glass=getattr(scene, "fp_white_keep_glass", True))
     try:
         scene.render.resolution_percentage = percent
         bpy.ops.render.render(write_still=False)
@@ -779,6 +812,8 @@ def measure_edges(scene, view_layer, percent=50):
         tree.nodes.remove(fo2)
         for n in chain_nodes:
             tree.nodes.remove(n)
+        if not was_white:
+            fp_core.set_white_preview(scene, False)
         scene.render.resolution_percentage = keep_pct
         # 測るたびに temp が残っていた
         shutil.rmtree(tmp, ignore_errors=True)
@@ -786,9 +821,17 @@ def measure_edges(scene, view_layer, percent=50):
     if d_all.shape != ln.shape or d_all.shape != al.shape:
         return None
     ink = 1.0 - ln
-    on = (ink > getattr(scene, "fp_lw_bin", 0.15)) & (al > 0.5)
+    sil = al > 0.5
+    on = (ink > getattr(scene, "fp_lw_bin", 0.15)) & sil
     if int(on.sum()) < 200:
         return None
+    # 線の密度(シルエットに占める線の割合)。密なモデルほど太らせる余地が
+    # 無いので、build_weight が最大幅を下げるのに使う。実測(精密):
+    #   スザンヌ 1.4% / カメラ 8% / メカ 20% / 機関車 23% / 帆船 36%
+    try:
+        scene.fp_lw_density = float(on.sum()) / float(max(int(sil.sum()), 1))
+    except (AttributeError, TypeError):
+        pass
     d = d_all[on]
     n = len(LEVELS)
     return [float(np.percentile(d, 100.0 * (k + 1) / n)) for k in range(n - 1)]
