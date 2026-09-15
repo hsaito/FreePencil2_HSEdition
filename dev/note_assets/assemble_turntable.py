@@ -43,6 +43,8 @@ def main():
     ap.add_argument("--src", required=True)
     ap.add_argument("--fps", type=int, default=24)
     ap.add_argument("--label", default="")
+    # 強弱側だけを 1920x1080 の単独動画にもする(全画面で見るため)
+    ap.add_argument("--solo", action="store_true")
     a = ap.parse_args()
     src = Path(a.src)
     offs = sorted((src / "off").glob("f*.png"))
@@ -66,11 +68,25 @@ def main():
         fr.save(seq / f"f{i:05d}.png")
     out = src / "turntable.mp4"
     import imageio_ffmpeg
-    cmd = [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-framerate", str(a.fps),
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    cmd = [ff, "-y", "-framerate", str(a.fps),
            "-i", str(seq / "f%05d.png"), "-c:v", "libx264", "-pix_fmt", "yuv420p",
            "-crf", "18", str(out)]
     subprocess.run(cmd, check=True, capture_output=True)
     print(f"{n}フレーム  {out}")
+    if a.solo:
+        solo = src / "solo"
+        if solo.exists():
+            shutil.rmtree(solo)
+        solo.mkdir()
+        for i in range(n):
+            onwhite(ons[i]).save(solo / f"f{i:05d}.png")
+        out2 = src / "weighted_1080p.mp4"
+        subprocess.run([ff, "-y", "-framerate", str(a.fps),
+                        "-i", str(solo / "f%05d.png"), "-c:v", "libx264",
+                        "-pix_fmt", "yuv420p", "-crf", "18", str(out2)],
+                       check=True, capture_output=True)
+        print(f"{n}フレーム  {out2}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,226 @@
+"""陰影をハッチング(斜線の網)に置き換える実験。アドオンは触らない。
+
+FreePencil の線画(強弱)と、同じカメラで撮った陰影(モノ光プレビュー)を
+別々に出し、陰影の暗さを斜線の密度に変換して線画に重ねる。
+
+    暗さ 0〜1 を 3 段の網で表す
+      1段目  45度の斜線          暗さ > 0.30 で出る
+      2段目  135度(交差)         暗さ > 0.55
+      3段目  0度(さらに交差)     暗さ > 0.75
+    段ごとに、線の太さは暗いほど太く(duty を暗さで動かす)
+
+網の周期・角度・段数は引数で振れる。フルHD 200% で撮って 50% に落とす
+(線画と同じ経路)。
+
+  blender -b --factory-startup --python eval_hatch.py -- \
+      [--model camera_2K] [--res 1920] [--period 14]
+"""
+from __future__ import annotations
+
+import math
+import sys
+from pathlib import Path
+
+ARGV = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+
+
+def arg(n, d=None):
+    return ARGV[ARGV.index(n) + 1] if n in ARGV else d
+
+
+HERE = Path(__file__).resolve().parent
+MODEL = arg("--model", "camera_2K")
+OUT = Path(arg("--out", str(HERE / "out" / f"hatch_{MODEL}"))).resolve()
+RES_W = int(arg("--res", "1920"))
+RES_H = RES_W * 9 // 16
+PERIOD = float(arg("--period", "14"))      # 縮小後の画素で、斜線の間隔
+FRAMES = int(arg("--frames", "1"))
+
+sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES_W), "--ss", "1"]
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / "batch"))
+import make_demo_movie as dm      # noqa: E402
+import bpy                        # noqa: E402
+import numpy as np                # noqa: E402
+import fp_batch                   # noqa: E402
+import scan_models                # noqa: E402
+from mathutils import Vector      # noqa: E402
+
+dm.OUT = OUT
+OUT.mkdir(parents=True, exist_ok=True)
+
+
+def say(m):
+    print(f"@@@ {m}", flush=True)
+
+
+def load_rgba(path):
+    img = bpy.data.images.load(str(path))
+    try:
+        w, h = img.size
+        buf = np.empty(w * h * 4, dtype=np.float32)
+        img.pixels.foreach_get(buf)
+        return buf.reshape(h, w, 4)[::-1].copy()      # 上が先頭に
+    finally:
+        bpy.data.images.remove(img)
+
+
+def save_rgb(path, rgb):
+    """0..1 の RGB(上が先頭)を PNG に。bpy は下が先頭なので反転して渡す"""
+    h, w = rgb.shape[:2]
+    img = bpy.data.images.new("hatch", w, h, alpha=True)
+    rgba = np.concatenate([rgb, np.ones((h, w, 1), dtype=np.float32)], axis=2)
+    img.pixels.foreach_set(rgba[::-1].astype(np.float32).ravel())
+    img.filepath_raw = str(path)
+    img.file_format = "PNG"
+    img.save()
+    bpy.data.images.remove(img)
+
+
+def stage(meshes):
+    sc = bpy.context.scene
+    pts = [o.matrix_world @ Vector(c) for o in meshes
+           for c in o.bound_box if not o.hide_render]
+    xs = [p.x for p in pts]
+    ys = [p.y for p in pts]
+    zs = [p.z for p in pts]
+    ctr = Vector(((min(xs) + max(xs)) * .5, (min(ys) + max(ys)) * .5,
+                  (min(zs) + max(zs)) * .5))
+    r = max((p - ctr).length for p in pts)
+    cd = bpy.data.cameras.new("C")
+    cd.lens = 55.0
+    cam = bpy.data.objects.new("C", cd)
+    sc.collection.objects.link(cam)
+    sc.camera = cam
+    from bpy_extras.object_utils import world_to_camera_view
+
+    def place(d, ang):
+        cam.location = (ctr.x + math.sin(ang) * d, ctr.y - math.cos(ang) * d,
+                        ctr.z + d * 0.22)
+        cam.rotation_euler = (ctr - Vector(cam.location)).to_track_quat(
+            "-Z", "Y").to_euler()
+        bpy.context.view_layer.update()
+
+    d = r * 3.0
+    for _ in range(3):
+        place(d, math.radians(30))
+        m = max(max(abs(world_to_camera_view(sc, cam, p).x - .5) * 2,
+                    abs(world_to_camera_view(sc, cam, p).y - .5) * 2)
+                for p in pts)
+        d *= m * 1.10
+    place(d, math.radians(30))
+    cd.clip_end = d * 30
+    w = bpy.data.worlds.new("W")
+    w.use_nodes = True
+    bg = w.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (.5, .5, .52, 1)
+        bg.inputs[1].default_value = .15
+    sc.world = w
+    lt = bpy.data.lights.new("K", type="SUN")
+    lt.energy = 3.0
+    lt.angle = 0.0
+    lo = bpy.data.objects.new("K", lt)
+    sc.collection.objects.link(lo)
+    lo.rotation_euler = (math.radians(55), 0, math.radians(35) + math.radians(30))
+    return d, place
+
+
+def hatch(dark, period, layers, duty_lo=0.25, duty_hi=0.55):
+    """暗さ(0..1)を斜線の網に。返り値はインク(0..1)。
+
+    layers: (角度deg, 出はじめる暗さ) の並び。暗いほど層が増え、
+    各層の線は暗いほど太い。
+    """
+    h, w = dark.shape
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    ink = np.zeros_like(dark)
+    for ang, start in layers:
+        a = math.radians(ang)
+        # 斜線に直交する座標。周期で割った小数部が 0..1
+        u = (xx * math.cos(a) + yy * math.sin(a)) / period
+        phase = u - np.floor(u)
+        # この層の強さ 0..1(start から +0.25 で 1 に)
+        s = np.clip((dark - start) / 0.25, 0.0, 1.0)
+        duty = duty_lo + (duty_hi - duty_lo) * s
+        # 線の縁は少しなめらかに(1px 分)
+        edge = 1.0 / period
+        d = np.minimum(phase, 1.0 - phase)          # 線の中心からの距離(周期単位)
+        line = np.clip((duty * 0.5 - d) / edge + 0.5, 0.0, 1.0)
+        ink = np.maximum(ink, line * (s > 0.0))
+    return ink
+
+
+def main():
+    fp_batch.install_addon()
+    from freepencil2 import fp_core
+    path = next(m["path"] for m in scan_models.scan(scan_models.DEFAULT_ROOT)
+                if MODEL in Path(m["path"]).stem)
+    meshes, _ = dm.load(path)
+    dm.grey(meshes)
+    dist, place = stage(meshes)
+    sc = bpy.context.scene
+    for p_ in ("fp_use_random_seed", "fp_enable_compositor_view",
+               "fp_auto_detect_aov", "fp_auto_white_preview"):
+        setattr(sc, p_, False)
+    sc.fp_color_seed = 42
+    sc.fp_auto_style = 'WEIGHTED'
+    sc.render.engine = fp_batch.eevee_engine()
+    sc.eevee.taa_render_samples = 24
+    sc.render.resolution_x = RES_W
+    sc.render.resolution_y = RES_H
+    sc.render.image_settings.file_format = "PNG"
+    sc.render.image_settings.color_mode = "RGBA"
+    sc.render.film_transparent = True
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in meshes:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    assert sc.render.resolution_percentage == 200
+
+    for f in range(FRAMES):
+        if FRAMES > 1:
+            place(dist, math.radians(30 + 360.0 * f / FRAMES))
+        tag = f"f{f:03d}"
+        # 1) 線画(白プレビュー)
+        sc.fp_preview_mode = 'WHITE'
+        fp_batch.render_still(sc, OUT / f"{tag}_line.png", 1)
+        # 2) 陰影(モノ光プレビュー)。線も乗るが暗さだけを使う
+        sc.fp_preview_mode = 'MONO_LIGHT'
+        fp_batch.render_still(sc, OUT / f"{tag}_mono.png", 1)
+        sc.fp_preview_mode = 'WHITE'
+
+        line = load_rgba(OUT / f"{tag}_line.png")
+        mono = load_rgba(OUT / f"{tag}_mono.png")
+        alpha = line[..., 3]
+        # 線画のインク(白地に黒線。透明は白)
+        l_ink = (1.0 - line[..., :3].mean(axis=2)) * alpha
+        # 陰影の暗さ。線の画素は陰影として数えない(線の分だけ暗く出るため)
+        m_lum = mono[..., :3].mean(axis=2)
+        dark = np.clip(1.0 - m_lum, 0.0, 1.0) * alpha
+        dark = np.where(l_ink > 0.3, 0.0, dark)
+        # 線の周りの陰影の穴を埋める(小さくぼかしてから使う)
+        from numpy.lib.stride_tricks import sliding_window_view
+        pad = np.pad(dark, 2, mode="edge")
+        dark_s = sliding_window_view(pad, (5, 5)).mean(axis=(2, 3))
+        # 暗さの目盛りを引き延ばす。モノ光は 0.25 が床なので、そこを 0 に
+        dark_s = np.clip((dark_s - 0.10) / 0.65, 0.0, 1.0) * alpha
+
+        variants = {
+            "a_1layer": [(45, 0.30)],
+            "b_2layer": [(45, 0.30), (135, 0.60)],
+            "c_3layer": [(45, 0.25), (135, 0.50), (0, 0.75)],
+        }
+        for name, layers in variants.items():
+            hk = hatch(dark_s, PERIOD, layers)
+            # 網は線より薄く(表示 70% の黒)
+            ink = np.maximum(l_ink, hk * 0.75)
+            rgb = np.stack([1.0 - ink] * 3, axis=2)
+            save_rgb(OUT / f"{tag}_{name}.png", rgb)
+        say(f"{tag} 完了")
+    say(f"完了 {OUT}")
+
+
+if __name__ == "__main__":
+    main()
