@@ -137,7 +137,7 @@ def _rand(*keys):
 
 
 def hatch(dark, period, layers, seg=90.0, gap=0.25, duty_lo=0.20,
-          duty_hi=0.50, wobble=0.35, rough=1.0):
+          duty_hi=0.50, wobble=0.35, rough=1.0, coords=None):
     """暗さ(0..1)を手描き風の斜線に。返り値はインク(0..1)。
 
     無限の縞ではなく、1本ずつ短いストロークを描く。
@@ -148,7 +148,11 @@ def hatch(dark, period, layers, seg=90.0, gap=0.25, duty_lo=0.20,
     rough=0 で揺れも入り抜きも無い縞に戻る。
     """
     h, w = dark.shape
-    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    if coords is None:
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    else:
+        # 表面座標(画素の単位に直してある)。網が模型に貼り付く
+        xx, yy = coords
     ink = np.zeros(dark.shape, dtype=np.float64)
     for li, (ang, start) in enumerate(layers):
         a = math.radians(ang)
@@ -227,6 +231,60 @@ def main():
         fp_batch.render_still(sc, OUT / f"f{f:03d}_mono.png", 1)
     sc.fp_preview_mode = 'WHITE'
 
+    # 表面座標(ワールド位置)と法線を EXR で出す。網を模型に貼り付けるため
+    from freepencil2 import compat
+    vl = bpy.context.view_layer
+    vl.use_pass_position = True
+    vl.use_pass_normal = True
+    tree = compat.get_compositor_tree(sc)
+    rl = next(n for n in tree.nodes if n.type == "R_LAYERS")
+    fo = tree.nodes.new("CompositorNodeOutputFile")
+    compat.file_output_set_dir(fo, str(OUT / "pass"))
+    compat.file_output_clear_slots(fo)
+    for name, sock in (("pos", "Position"), ("nrm", "Normal")):
+        compat.file_output_add_slot(fo, name, "OPEN_EXR", "RGBA")
+        tree.links.new(rl.outputs[sock], fo.inputs[name])
+    try:
+        fo.format.color_depth = "32"
+    except (AttributeError, TypeError):
+        pass
+    # 線画は 200% のキャンバスいっぱいで出るので、パスも 200% のまま
+    for f in range(FRAMES):
+        place(dist, angle(f))
+        sc.frame_set(f + 1)
+        bpy.ops.render.render(write_still=False)
+    tree.nodes.remove(fo)
+
+    # 画素1つがワールドで何単位か(55mm・36mm センサー・距離 dist)。
+    # 絵は 200% のキャンバス(RES_W*2)で出る
+    px_w = dist * 36.0 / 55.0 / (RES_W * 2)
+    say(f"表面座標: 1px = {px_w:.4f} 単位")
+
+    def load_exr(name, f):
+        import glob
+        p = sorted(glob.glob(str(OUT / "pass" / f"{name}*{f + 1:04d}*")))[0]
+        img = bpy.data.images.load(p)
+        try:
+            w, h = img.size
+            buf = np.empty(w * h * 4, dtype=np.float32)
+            img.pixels.foreach_get(buf)
+            # 線画も F12 は 200% のキャンバスいっぱい(3840)で出るので、
+            # パスもそのまま使う
+            return buf.reshape(h, w, 4)[::-1, :, :3].astype(np.float64)
+        finally:
+            bpy.data.images.remove(img)
+
+    def surface_coords(f):
+        """法線の向きで XY/YZ/ZX のどれかに投影し、画素の単位で返す"""
+        P = load_exr("pos", f)
+        N = load_exr("nrm", f)
+        ax = np.argmax(np.abs(N), axis=2)
+        cx = np.where(ax == 0, P[..., 1], np.where(ax == 1, P[..., 0], P[..., 0]))
+        cy = np.where(ax == 0, P[..., 2], np.where(ax == 1, P[..., 2], P[..., 1]))
+        # 面ごとに位相をずらして、面の境目で網がつながって見えないように
+        cx = cx + ax * 37.0 * px_w
+        return cx / px_w, cy / px_w
+
     from numpy.lib.stride_tricks import sliding_window_view
     variants = {
         "a_1layer": [(45, 0.30)],
@@ -248,8 +306,9 @@ def main():
         dark_s = sliding_window_view(pad, (5, 5)).mean(axis=(2, 3))
         # 暗さの目盛りを引き延ばす。モノ光は 0.25 が床なので、そこを 0 に
         dark_s = np.clip((dark_s - 0.10) / 0.65, 0.0, 1.0) * alpha
+        coords = surface_coords(f)
         for name, layers in variants.items():
-            hk = hatch(dark_s, PERIOD, layers, seg=SEG, rough=ROUGH)
+            hk = hatch(dark_s, PERIOD, layers, seg=SEG, rough=ROUGH, coords=coords)
             ink = np.maximum(l_ink, hk * 0.75)
             save_rgb(OUT / f"{tag}_{name}.png", np.stack([1.0 - ink] * 3, axis=2))
         say(f"{tag} 完了")
