@@ -34,6 +34,8 @@ OUT = Path(arg("--out", str(HERE / "out" / f"hatch_{MODEL}"))).resolve()
 RES_W = int(arg("--res", "1920"))
 RES_H = RES_W * 9 // 16
 PERIOD = float(arg("--period", "14"))      # 縮小後の画素で、斜線の間隔
+SEG = float(arg("--seg", "90"))            # ストロークの長さ(px)
+ROUGH = float(arg("--rough", "1.0"))       # 揺れと入り抜き。0 で縞
 FRAMES = int(arg("--frames", "1"))
 
 sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES_W), "--ss", "1"]
@@ -126,29 +128,59 @@ def stage(meshes):
     return d, place
 
 
-def hatch(dark, period, layers, duty_lo=0.25, duty_hi=0.55):
-    """暗さ(0..1)を斜線の網に。返り値はインク(0..1)。
+def _rand(*keys):
+    """整数の組から 0..1 の擬似乱数(決定論的)。フレーム間で同じ値になる"""
+    h = np.zeros_like(keys[0], dtype=np.float64)
+    for i, k in enumerate(keys):
+        h = h * 1013.0 + k.astype(np.float64) * (12.9898 + 7.7 * i)
+    return np.abs(np.sin(h) * 43758.5453) % 1.0
 
-    layers: (角度deg, 出はじめる暗さ) の並び。暗いほど層が増え、
-    各層の線は暗いほど太い。
+
+def hatch(dark, period, layers, seg=90.0, gap=0.25, duty_lo=0.20,
+          duty_hi=0.50, wobble=0.35, rough=1.0):
+    """暗さ(0..1)を手描き風の斜線に。返り値はインク(0..1)。
+
+    無限の縞ではなく、1本ずつ短いストロークを描く。
+      - 長さ seg 前後(乱数で 0.6〜1.3 倍)、間に gap の隙間
+      - 両端が細くなる(入り抜き)。太さは sin の山
+      - 行の間隔と位置が少し揺れる(wobble)、行ごとに微妙に傾く
+      - 暗いほど太く、暗さが薄れる所では細って消える
+    rough=0 で揺れも入り抜きも無い縞に戻る。
     """
     h, w = dark.shape
-    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
-    ink = np.zeros_like(dark)
-    for ang, start in layers:
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    ink = np.zeros(dark.shape, dtype=np.float64)
+    for li, (ang, start) in enumerate(layers):
         a = math.radians(ang)
-        # 斜線に直交する座標。周期で割った小数部が 0..1
-        u = (xx * math.cos(a) + yy * math.sin(a)) / period
-        phase = u - np.floor(u)
+        u = xx * math.cos(a) + yy * math.sin(a)        # 線に沿う
+        v = -xx * math.sin(a) + yy * math.cos(a)       # 線に直交
+        # 行(ストロークの列)。行ごとに位置と傾きを少し揺らす
+        r = np.floor(v / period)
+        jr = (_rand(r, np.full_like(r, li)) - 0.5) * period * 0.5 * rough
+        tilt = (_rand(r, np.full_like(r, li + 7)) - 0.5) * 0.06 * rough
+        vc = (r + 0.5) * period + jr + tilt * (u - w * 0.5)
+        # 行ごとに沿う方向の位相をずらし、スロットに切る
+        pr = _rand(r, np.full_like(r, li + 3)) * seg
+        k = np.floor((u + pr) / seg)
+        L = seg * (0.6 + 0.7 * _rand(r, k, np.full_like(r, li + 11)))  # 長さ
+        s0 = _rand(r, k, np.full_like(r, li + 13)) * (seg - L * (1.0 - gap))
+        t = ((u + pr) - (k * seg + s0)) / np.maximum(L, 1e-6)
+        inside = (t > 0.0) & (t < 1.0)
+        # 入り抜き: 両端で 0、中央で 1。少し非対称に(入りが速い)
+        tt = np.clip(t, 0.0, 1.0)
+        prof = np.sin(np.pi * tt) ** (0.55 if rough > 0 else 0.0)
+        # 沿う方向の細かい揺れ
+        wob = np.sin(u * 0.11 + _rand(r, k, np.full_like(r, li + 17)) * 6.28)             * period * 0.12 * wobble * rough
         # この層の強さ 0..1(start から +0.25 で 1 に)
-        s = np.clip((dark - start) / 0.25, 0.0, 1.0)
-        duty = duty_lo + (duty_hi - duty_lo) * s
-        # 線の縁は少しなめらかに(1px 分)
-        edge = 1.0 / period
-        d = np.minimum(phase, 1.0 - phase)          # 線の中心からの距離(周期単位)
-        line = np.clip((duty * 0.5 - d) / edge + 0.5, 0.0, 1.0)
-        ink = np.maximum(ink, line * (s > 0.0))
-    return ink
+        sdk = np.clip((dark - start) / 0.25, 0.0, 1.0)
+        duty = duty_lo + (duty_hi - duty_lo) * sdk
+        half = duty * 0.5 * period * prof * np.where(inside, 1.0, 0.0)
+        # 暗さが薄れる所では細って消える(半幅を強さで縮める)
+        half = half * (0.35 + 0.65 * sdk)
+        d = np.abs(v - vc - wob)
+        line = np.clip((half - d) + 0.75, 0.0, 1.0)      # 縁 1.5px ぼかし
+        ink = np.maximum(ink, line * (sdk > 0.0))
+    return ink.astype(np.float32)
 
 
 def main():
@@ -213,7 +245,7 @@ def main():
             "c_3layer": [(45, 0.25), (135, 0.50), (0, 0.75)],
         }
         for name, layers in variants.items():
-            hk = hatch(dark_s, PERIOD, layers)
+            hk = hatch(dark_s, PERIOD, layers, seg=SEG, rough=ROUGH)
             # 網は線より薄く(表示 70% の黒)
             ink = np.maximum(l_ink, hk * 0.75)
             rgb = np.stack([1.0 - ink] * 3, axis=2)
