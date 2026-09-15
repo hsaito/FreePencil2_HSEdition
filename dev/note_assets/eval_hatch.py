@@ -36,6 +36,8 @@ RES_H = RES_W * 9 // 16
 PERIOD = float(arg("--period", "14"))      # 縮小後の画素で、斜線の間隔
 SEG = float(arg("--seg", "90"))            # ストロークの長さ(px)
 ROUGH = float(arg("--rough", "1.0"))       # 揺れと入り抜き。0 で縞
+PROJ = arg("--proj", "sphere")             # surface=表面に貼る / sphere=包む球
+SLIP = float(arg("--slip", "0.3"))         # 球がカメラの回転に追従する割合。0 で固定
 FRAMES = int(arg("--frames", "1"))
 
 sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES_W), "--ss", "1"]
@@ -125,7 +127,7 @@ def stage(meshes):
     lo = bpy.data.objects.new("K", lt)
     sc.collection.objects.link(lo)
     lo.rotation_euler = (math.radians(55), 0, math.radians(35) + math.radians(30))
-    return d, place
+    return d, place, ctr, r
 
 
 def _rand(*keys):
@@ -194,7 +196,7 @@ def main():
                 if MODEL in Path(m["path"]).stem)
     meshes, _ = dm.load(path)
     dm.grey(meshes)
-    dist, place = stage(meshes)
+    dist, place, ctr, rad = stage(meshes)
     sc = bpy.context.scene
     for p_ in ("fp_use_random_seed", "fp_enable_compositor_view",
                "fp_auto_detect_aov", "fp_auto_white_preview"):
@@ -249,8 +251,10 @@ def main():
     except (AttributeError, TypeError):
         pass
     # 線画は 200% のキャンバスいっぱいで出るので、パスも 200% のまま
+    cams = []
     for f in range(FRAMES):
         place(dist, angle(f))
+        cams.append(np.array(sc.camera.matrix_world.translation, dtype=np.float64))
         sc.frame_set(f + 1)
         bpy.ops.render.render(write_still=False)
     tree.nodes.remove(fo)
@@ -285,6 +289,37 @@ def main():
         cx = cx + ax * 37.0 * px_w
         return cx / px_w, cy / px_w
 
+    def sphere_coords(f):
+        """モデルを包む球にハッチングを貼り、カメラから見て合成する。
+
+        表面にべったり貼ると傷に見える(指摘あり)。各画素の視線を球
+        (中心=モデルの中心、半径=外接球の 1.3 倍)と交差させ、その交点の
+        緯度経度でストロークを描く。球の表面は一様なので、面の向きや
+        中心からの距離で網が圧縮されない。球はカメラの回転に SLIP の
+        割合だけ追従させるので、網が面の上をゆっくり滑る
+        """
+        P = load_exr("pos", f)
+        C = cams[f]
+        O = np.array([ctr.x, ctr.y, ctr.z])
+        Rb = rad * 1.3
+        v = P - C
+        v = v / np.maximum(np.linalg.norm(v, axis=2, keepdims=True), 1e-9)
+        oc = C - O
+        bq = np.einsum("ijk,k->ij", v, oc)
+        cq = float(oc @ oc) - Rb * Rb
+        disc = np.maximum(bq * bq - cq, 0.0)
+        t = -bq - np.sqrt(disc)                  # 手前の交点
+        q = C + v * t[..., None] - O
+        q = q / Rb
+        th = -(angle(f) - angle(0)) * SLIP
+        c, s_ = math.cos(th), math.sin(th)
+        x = q[..., 0] * c - q[..., 1] * s_
+        y = q[..., 0] * s_ + q[..., 1] * c
+        z = q[..., 2]
+        lon = np.arctan2(y, x)
+        lat = np.arcsin(np.clip(z, -1.0, 1.0))
+        return lon * Rb / px_w, lat * Rb / px_w
+
     from numpy.lib.stride_tricks import sliding_window_view
     variants = {
         "a_1layer": [(45, 0.30)],
@@ -305,10 +340,23 @@ def main():
         pad = np.pad(dark, 2, mode="edge")
         dark_s = sliding_window_view(pad, (5, 5)).mean(axis=(2, 3))
         # 暗さの目盛りを引き延ばす。モノ光は 0.25 が床なので、そこを 0 に
-        dark_s = np.clip((dark_s - 0.10) / 0.65, 0.0, 1.0) * alpha
-        coords = surface_coords(f)
+        # 目盛り: 0.08 で 0、0.5 で 1。0.10/0.65 では網が 0.1% しか出なかった
+        dark_s = np.clip((dark_s - 0.08) / 0.42, 0.0, 1.0) * alpha
+        coords = sphere_coords(f) if PROJ == "sphere" else surface_coords(f)
+        if f == 0:
+            cx, cy = coords
+            m = alpha > 0.5
+            say(f"座標 x: {cx[m].min():.0f}..{cx[m].max():.0f}  y: {cy[m].min():.0f}..{cy[m].max():.0f}  "
+                f"暗さ>0.3 の割合 {(dark_s[m] > 0.3).mean() * 100:.1f}%  rad {rad:.3f} px_w {px_w:.5f}")
+            save_rgb(OUT / "dbg_dark.png", np.stack([1.0 - dark_s] * 3, axis=2))
         for name, layers in variants.items():
             hk = hatch(dark_s, PERIOD, layers, seg=SEG, rough=ROUGH, coords=coords)
+            if f == 0:
+                say(f"{name}: 網のインク {hk.mean() * 100:.2f}%  暗さ>0.3 {(dark_s > 0.3).mean() * 100:.2f}%")
+            if f == 0 and name == "b_2layer":
+                save_rgb(OUT / "dbg_hatch.png", np.stack([1.0 - hk] * 3, axis=2))
+                hk_flat = hatch(np.ones_like(dark_s) * 0.9 * alpha, PERIOD, layers, seg=SEG, rough=ROUGH, coords=coords)
+                save_rgb(OUT / "dbg_hatch_full.png", np.stack([1.0 - hk_flat] * 3, axis=2))
             ink = np.maximum(l_ink, hk * 0.75)
             save_rgb(OUT / f"{tag}_{name}.png", np.stack([1.0 - ink] * 3, axis=2))
         say(f"{tag} 完了")
