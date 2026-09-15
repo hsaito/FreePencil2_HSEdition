@@ -211,18 +211,30 @@ def main():
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     assert sc.render.resolution_percentage == 200
 
-    for f in range(FRAMES):
-        if FRAMES > 1:
-            place(dist, math.radians(30 + 360.0 * f / FRAMES))
-        tag = f"f{f:03d}"
-        # 1) 線画(白プレビュー)
-        sc.fp_preview_mode = 'WHITE'
-        fp_batch.render_still(sc, OUT / f"{tag}_line.png", 1)
-        # 2) 陰影(モノ光プレビュー)。線も乗るが暗さだけを使う
-        sc.fp_preview_mode = 'MONO_LIGHT'
-        fp_batch.render_still(sc, OUT / f"{tag}_mono.png", 1)
-        sc.fp_preview_mode = 'WHITE'
+    # 白 <-> モノ光を毎フレーム往復すると白に戻らなかった(実測: 2枚目
+    # 以降の線画に陰影が乗った)。線画を全フレーム撮ってから、モノ光を
+    # 全フレーム撮る
+    def angle(f):
+        return math.radians(30 + 360.0 * f / FRAMES) if FRAMES > 1 else math.radians(30)
 
+    sc.fp_preview_mode = 'WHITE'
+    for f in range(FRAMES):
+        place(dist, angle(f))
+        fp_batch.render_still(sc, OUT / f"f{f:03d}_line.png", 1)
+    sc.fp_preview_mode = 'MONO_LIGHT'
+    for f in range(FRAMES):
+        place(dist, angle(f))
+        fp_batch.render_still(sc, OUT / f"f{f:03d}_mono.png", 1)
+    sc.fp_preview_mode = 'WHITE'
+
+    from numpy.lib.stride_tricks import sliding_window_view
+    variants = {
+        "a_1layer": [(45, 0.30)],
+        "b_2layer": [(45, 0.30), (135, 0.60)],
+        "c_3layer": [(45, 0.25), (135, 0.50), (0, 0.75)],
+    }
+    for f in range(FRAMES):
+        tag = f"f{f:03d}"
         line = load_rgba(OUT / f"{tag}_line.png")
         mono = load_rgba(OUT / f"{tag}_mono.png")
         alpha = line[..., 3]
@@ -232,24 +244,14 @@ def main():
         m_lum = mono[..., :3].mean(axis=2)
         dark = np.clip(1.0 - m_lum, 0.0, 1.0) * alpha
         dark = np.where(l_ink > 0.3, 0.0, dark)
-        # 線の周りの陰影の穴を埋める(小さくぼかしてから使う)
-        from numpy.lib.stride_tricks import sliding_window_view
         pad = np.pad(dark, 2, mode="edge")
         dark_s = sliding_window_view(pad, (5, 5)).mean(axis=(2, 3))
         # 暗さの目盛りを引き延ばす。モノ光は 0.25 が床なので、そこを 0 に
         dark_s = np.clip((dark_s - 0.10) / 0.65, 0.0, 1.0) * alpha
-
-        variants = {
-            "a_1layer": [(45, 0.30)],
-            "b_2layer": [(45, 0.30), (135, 0.60)],
-            "c_3layer": [(45, 0.25), (135, 0.50), (0, 0.75)],
-        }
         for name, layers in variants.items():
             hk = hatch(dark_s, PERIOD, layers, seg=SEG, rough=ROUGH)
-            # 網は線より薄く(表示 70% の黒)
             ink = np.maximum(l_ink, hk * 0.75)
-            rgb = np.stack([1.0 - ink] * 3, axis=2)
-            save_rgb(OUT / f"{tag}_{name}.png", rgb)
+            save_rgb(OUT / f"{tag}_{name}.png", np.stack([1.0 - ink] * 3, axis=2))
         say(f"{tag} 完了")
     say(f"完了 {OUT}")
 
