@@ -38,6 +38,8 @@ SEG = float(arg("--seg", "90"))            # ストロークの長さ(px)
 ROUGH = float(arg("--rough", "1.0"))       # 揺れと入り抜き。0 で縞
 PROJ = arg("--proj", "sphere")             # surface=表面に貼る / sphere=包む球
 SLIP = float(arg("--slip", "0.3"))         # 球がカメラの回転に追従する割合。0 で固定
+MODE = arg("--mode", "mask")               # mask=一様な網を影で切り抜く / fade=濃さで太さを変える
+EDGE = float(arg("--edge", "0.06"))        # マスクの縁のなめらかさ(暗さの幅)
 FRAMES = int(arg("--frames", "1"))
 
 sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES_W), "--ss", "1"]
@@ -350,7 +352,19 @@ def main():
                 f"暗さ>0.3 の割合 {(dark_s[m] > 0.3).mean() * 100:.1f}%  rad {rad:.3f} px_w {px_w:.5f}")
             save_rgb(OUT / "dbg_dark.png", np.stack([1.0 - dark_s] * 3, axis=2))
         for name, layers in variants.items():
-            hk = hatch(dark_s, PERIOD, layers, seg=SEG, rough=ROUGH, coords=coords)
+            if MODE == "mask":
+                # 一様な網を、層ごとの影のマスクで切り抜く。網の太さは
+                # 影の濃さで変えない(ペン画の定番。指摘あり)
+                hk = np.zeros_like(dark_s)
+                for ang, start in layers:
+                    full = hatch(np.full_like(dark_s, 0.999), PERIOD, [(ang, 0.0)],
+                                 seg=SEG, rough=ROUGH, coords=coords,
+                                 duty_lo=0.32, duty_hi=0.32, gap=0.08)
+                    mask = np.clip((dark_s - start) / EDGE, 0.0, 1.0)
+                    hk = np.maximum(hk, full * mask)
+                hk = hk * alpha
+            else:
+                hk = hatch(dark_s, PERIOD, layers, seg=SEG, rough=ROUGH, coords=coords)
             if f == 0:
                 say(f"{name}: 網のインク {hk.mean() * 100:.2f}%  暗さ>0.3 {(dark_s > 0.3).mean() * 100:.2f}%")
             if f == 0 and name == "b_2layer":
