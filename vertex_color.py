@@ -560,6 +560,18 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     mesh_islands.merge_small_islands(topo, min_island_area_pct)
                     islands = topo.islands
 
+                # --- 2.7 葉を房にまとめる(手描き背景モードだけ) ---
+                # 既定 0 = この分岐を通らない。精密・キャラの経路は不変
+                k_clumps = int(getattr(scene, "fp_foliage_clumps", 0))
+                if k_clumps > 0 and len(islands) > 1:
+                    n_before = len(islands)
+                    n_clumps = mesh_islands.clump_small_islands(
+                        topo, k_clumps, master_operation_seed_int)
+                    if n_clumps:
+                        islands = topo.islands
+                        print(f"[FreePencil] '{obj.name}': 葉を房に "
+                              f"{n_before}島 -> {len(islands)}島(房{n_clumps})")
+
                 # --- 3. 島の隣接グラフ彩色 + パレット配色 ---
                 # 乱数リトライで隣接色距離を満たそうとする方式をやめ、
                 # 隣接グラフをグリーディ彩色して「相互距離を最大化した

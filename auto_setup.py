@@ -79,11 +79,20 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
             return None
         view_layer.objects.active = targets[0]
 
-        # --- 仕上がり。精密 = v2.7 の出力そのまま、強弱 = AO の強弱 ---
-        weighted = getattr(scene, "fp_auto_style", 'PRECISE') == 'WEIGHTED'
+        # --- 仕上がり。精密 = v2.7 の出力そのまま、キャラ = AO の強弱、
+        # 背景 = キャラ + 特殊処理(奥の扱い・葉の房) ---
+        style = getattr(scene, "fp_auto_style", 'PRECISE')
+        weighted = style in ('WEIGHTED', 'BACKGROUND')
+        background = style == 'BACKGROUND'
         # 人工分割の下限。14 の根拠は utils.ARTIFICIAL_SPLIT_FLOOR
         scene.fp_auto_split_floor = 14.0 if weighted else 5.0
         scene.fp_line_weight = weighted
+        # 奥の扱い(値の根拠は dev/note_assets/eval_far_ideas.py の 24案比較)
+        scene.fp_lw_far = 1.0 if background else 0.0
+        scene.fp_lw_far_sens = 3.0 if background else 1.0
+        scene.fp_lw_far_fade = 0.35 if background else 0.0
+        # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
+        scene.fp_foliage_clumps = 4 if background else 0
 
         # --- おすすめ設定(STEP0 のチェックが入っている項目のみ適用) ---
         if scene.fp_auto_sharp:

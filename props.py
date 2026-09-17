@@ -445,6 +445,25 @@ def register_props():
             ),
             default=0.0, min=0.0, precision=1
         ),
+        # 手描き背景モードの特殊処理。既定 0 = 通らない
+        "fp_foliage_clumps": IntProperty(
+            name="Foliage clumps",
+            description=(
+                "Paint small islands (leaf cards) in this many spatial "
+                "clumps instead of one colour per leaf. 0 = off. Needs "
+                "STEP1 again. Maple 4-8, palm 1"
+            ),
+            default=0, min=0, max=16
+        ),
+        "fp_gap_fill": IntProperty(
+            name="Fill leaf gaps",
+            description=(
+                "Fill holes narrower than this (pixels at 200%) before "
+                "detecting lines, so sky seen between leaves does not "
+                "outline every leaf. 0 = off. Needs STEP3 again"
+            ),
+            default=0, min=0, max=32
+        ),
         "fp_lw_deep_thick": BoolProperty(
             name="Thick in cavities",
             description=(
@@ -572,11 +591,15 @@ def register_props():
             items=[
                 ('PRECISE', "Precise (mech)",
                  "Uniform lines, every panel edge. Same output as v2.7"),
-                ('WEIGHTED', "Weighted (hand-drawn)",
+                ('WEIGHTED', "Character (hand-drawn)",
                  "Line weight from cavities (AO): the outline is thick and "
                  "lines thin as they enter a crease. Smooth surfaces are "
                  "split less (14 deg floor, ridge 0.45) and the AO "
                  "thresholds are measured for this shot"),
+                ('BACKGROUND', "Background (hand-drawn)",
+                 "Character plus special handling for sets: far lines get "
+                 "thin, fewer and lighter with distance, and foliage is "
+                 "painted in clumps instead of leaf by leaf"),
             ],
             default='PRECISE'
         ),
@@ -864,6 +887,7 @@ def unregister_props():
         "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain", "fp_lw_tone", "fp_lw_deep_thick", "fp_lw_density",
         "fp_lw_ao_dist", "fp_lw_ao_blur", "fp_lw_crowd",
         "fp_lw_far", "fp_lw_far_sens", "fp_lw_far_fade", "fp_lw_far_start", "fp_lw_far_end",
+        "fp_foliage_clumps", "fp_gap_fill",
         "fp_lw_crowd_radius", "fp_lw_crowd_threshold", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",
         "fp_ch_mecha", "fp_ch_depth", "fp_ch_bone", "fp_ch_gen", "fp_ch_mat",

@@ -10,11 +10,11 @@
     前に進みながら、ゆっくり左右を見る。
 
   blender -b --factory-startup --python make_town_demo.py -- \
-      [--frames 240] [--res 1920] [--floor 0.55] [--far 1,3,0.35]
+      [--frames 240] [--res 1920] [--floor 0.55] [--style BACKGROUND] [--gap 0]
 
---far は「奥の扱い」(v2.8 の fp_lw_far / far_sens / far_fade)。奥の線を
-細く・少なく・薄くして、遠くの機関車が黒い塊になるのを防ぐ。距離は
-STEP0 のしきい値計測が一緒に測る。
+--style は STEP0 の仕上がり(WEIGHTED = キャラ / BACKGROUND = 手描き背景)。
+手描き背景は奥の扱い(細く・少なく・薄く)と葉の房まとめを STEP0 が入れる。
+--gap は葉の隙間埋め(px、既定 0)。
 """
 from __future__ import annotations
 
@@ -38,7 +38,8 @@ RES_H = RES_W * 9 // 16
 FRAMES = int(arg("--frames", "240"))
 MONO_FLOOR = float(arg("--floor", "0.55"))     # 影の下限。高いほど薄い陰影
 START = int(arg("--start", "0"))
-FAR = [float(v) for v in arg("--far", "0,1,0").split(",")]   # 細く, 減らす, 薄く
+STYLE = arg("--style", "WEIGHTED")
+GAP = int(arg("--gap", "0"))
 
 sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES_W), "--ss", "1"]
 sys.path.insert(0, str(HERE))
@@ -233,7 +234,8 @@ def main():
                "fp_auto_detect_aov", "fp_auto_white_preview"):
         setattr(sc, p_, False)
     sc.fp_color_seed = 42
-    sc.fp_auto_style = 'WEIGHTED'
+    sc.fp_auto_style = STYLE
+    sc.fp_gap_fill = GAP
     sc.render.engine = fp_batch.eevee_engine()
     sc.eevee.taa_render_samples = 24
     sc.render.resolution_x = RES_W
@@ -253,16 +255,15 @@ def main():
         f"密度 {getattr(sc, 'fp_lw_density', -1):.3f}")
     # 地平線(地面の奥と空)の深度差が太い帯になる(実測)。深度は切る
     sc.fp_ch_depth = 0.0
-    # 奥の扱い。STEP3 を組み直す(距離は STEP0 の計測で入っている)
-    if FAR != [0.0, 1.0, 0.0]:
-        # 距離は深度チャンネルを切ってから測り直す。STEP0 の計測は地平線
-        # の帯(深度チャンネル)まで線に数えて、奥の終わりが 238 になった
-        # (実測。切ると 71)
+    # 手描き背景: 奥の距離は深度チャンネルを切ってから測り直す。STEP0 の
+    # 計測は地平線の帯(深度チャンネル)まで線に数えて、奥の終わりが 238 に
+    # なった(実測。切ると 71)
+    if sc.fp_lw_far > 0.0 or sc.fp_lw_far_sens > 1.0:
         bpy.ops.freepencil.measure_line_weight()
-        sc.fp_lw_far, sc.fp_lw_far_sens, sc.fp_lw_far_fade = FAR
         bpy.ops.freepencil2.link_button()
-        say(f"奥の扱い 細く{FAR[0]:g} 減らす{FAR[1]:g} 薄く{FAR[2]:g}  "
-            f"距離 {sc.fp_lw_far_start:.1f}..{sc.fp_lw_far_end:.1f}")
+        say(f"奥の扱い 細く{sc.fp_lw_far:g} 減らす{sc.fp_lw_far_sens:g} "
+            f"薄く{sc.fp_lw_far_fade:g}  距離 {sc.fp_lw_far_start:.1f}..{sc.fp_lw_far_end:.1f}  "
+            f"葉の房 {sc.fp_foliage_clumps}  隙間 {sc.fp_gap_fill}")
     # 薄い陰影: モノ光プレビュー。床を高くして薄く
     sc.fp_mono_floor = MONO_FLOOR
     sc.fp_preview_mode = 'MONO_LIGHT'

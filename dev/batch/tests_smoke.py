@@ -2140,11 +2140,100 @@ def t49():
         f"しきい値が測られていない(既定のまま): {edges}")
     assert edges[0] < edges[-1], f"しきい値が単調でない: {edges}"
 
+    from freepencil2 import compat
+    # キャラは奥の扱いも葉の房も入れない
+    assert scene.fp_lw_far == 0.0 and scene.fp_lw_far_sens == 1.0 \
+        and scene.fp_lw_far_fade == 0.0 and scene.fp_foliage_clumps == 0, "キャラに背景の特殊処理が入った"
+
+    # 手描き背景 = キャラ + 奥の扱い + 葉の房
+    scene.fp_auto_style = 'BACKGROUND'
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in scene.objects:
+        if o.type == "MESH":
+            o.select_set(True)
+            bpy.context.view_layer.objects.active = o
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    assert scene.fp_line_weight and abs(scene.fp_auto_split_floor - 14.0) < 1e-6
+    assert scene.fp_lw_far == 1.0 and scene.fp_lw_far_sens == 3.0 \
+        and abs(scene.fp_lw_far_fade - 0.35) < 1e-6, "背景なのに奥の扱いが入らない"
+    assert scene.fp_foliage_clumps == 4, "背景なのに葉の房が入らない"
+    assert scene.fp_lw_far_end > scene.fp_lw_far_start > 0.0, "奥の距離が測られていない"
+    assert any(n.get("fp_tap") == "far" for n in
+               compat.get_compositor_tree(scene).nodes), "背景なのに奥度のノードが無い"
+
     # 精密に戻すと強弱ノードが消えて、値も v2.7 に戻る
     scene.fp_auto_style = 'PRECISE'
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     assert not scene.fp_line_weight and _lw_node_count(scene) == 0, "精密に戻らない"
     assert abs(scene.fp_auto_split_floor - 5.0) < 1e-6
+    assert scene.fp_lw_far == 0.0 and scene.fp_foliage_clumps == 0, "精密に戻しても特殊処理が残る"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("foliage: small islands are painted in clumps (background mode only)")
+def t52():
+    # 葉カード 400 枚(バラバラの小さい板)。房 0 では葉ごとに違う色が
+    # 何十色も並び、房 4 では葉の色が 4 色以下にまとまる。幹(大きい島)は
+    # 房に入らない
+    import math
+    import numpy as np
+    bpy.ops.wm.read_homefile(use_empty=True)
+    import bmesh
+    me = bpy.data.meshes.new("Tree")
+    bm = bmesh.new()
+    rng = np.random.default_rng(3)
+    for _ in range(400):
+        c = rng.uniform(-1.0, 1.0, size=3)
+        c[2] += 2.5
+        a = rng.uniform(0, math.pi)
+        dx, dy = math.cos(a) * 0.08, math.sin(a) * 0.08
+        v = [bm.verts.new((c[0] - dx, c[1] - dy, c[2] - 0.08)),
+             bm.verts.new((c[0] + dx, c[1] + dy, c[2] - 0.08)),
+             bm.verts.new((c[0] + dx, c[1] + dy, c[2] + 0.08)),
+             bm.verts.new((c[0] - dx, c[1] - dy, c[2] + 0.08))]
+        bm.faces.new(v)
+    # 幹: 大きい四角柱
+    bmesh.ops.create_cube(bm, size=1.0)
+    for v in list(bm.verts)[-8:]:
+        v.co.x *= 0.3
+        v.co.y *= 0.3
+        v.co.z = v.co.z * 1.5 + 0.75
+    bm.to_mesh(me)
+    bm.free()
+    obj = bpy.data.objects.new("Tree", me)
+    scene = bpy.context.scene
+    scene.collection.objects.link(obj)
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.location = (0, -8, 2)
+    cam.rotation_euler = (math.radians(90), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.fp_use_random_seed = False
+    scene.fp_color_seed = 7
+    scene.fp_enable_compositor_view = False
+    scene.fp_auto_detect_aov = False
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+
+    def leaf_colours(k):
+        scene.fp_auto_style = 'WEIGHTED'
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        assert scene.fp_foliage_clumps == 0
+        if k:
+            scene.fp_foliage_clumps = k
+            bpy.ops.freepencil.auto_vertex_color("EXEC_DEFAULT")
+        vc = me.color_attributes["mecha_color"]
+        buf = np.empty(len(me.loops) * 4, dtype=np.float32)
+        vc.data.foreach_get("color", buf)
+        buf = buf.reshape(-1, 4)[:, :3]
+        leaf_loops = buf[:400 * 4]
+        q = np.round(leaf_loops * 255).astype(np.int64)
+        return len(set(map(tuple, q.tolist())))
+
+    n0 = leaf_colours(0)
+    n4 = leaf_colours(4)
+    assert n0 >= 8, f"房なしで葉の色が少なすぎる: {n0}"
+    assert n4 <= 4, f"房4で葉の色が 4 を超える: {n4}(房なし {n0})"
     bpy.ops.wm.read_homefile(use_empty=True)
 
 

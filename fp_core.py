@@ -702,6 +702,10 @@ def setup_compositor(scene: bpy.types.Scene,
         if output_sock is not None:
             tree.links.new(output_sock, input_sock)
 
+    # 葉の隙間埋め(手描き背景)。既定 0 で何も挿さない
+    from . import gap_fill
+    gap_fill.apply(tree, scene, rl, group_node)
+
     if group_node.outputs:
         insert_antialiasing_if_needed(
             tree,

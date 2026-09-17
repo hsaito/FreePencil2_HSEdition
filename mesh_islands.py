@@ -804,3 +804,140 @@ def merge_small_islands(topo: MeshTopology, min_area_pct: float) -> None:
         if r != i:
             merged[r].append(islands[i])
     topo.set_islands([np.concatenate(merged[k]) for k in sorted(merged)])
+
+
+# 葉を房にまとめる(手描き背景モード)。
+#
+# 葉カードは1枚ずつ別の島で、隣の葉と必ず違う色になるため、葉1枚ごとに
+# 輪郭が出て遠くでは黒い塊になる。人が木を描くときは葉を1枚ずつ描かず、
+# 房(かたまり)の輪郭を描く。小さい島を 3D 位置で k 房に分け、房を1つの
+# 島として塗る。房の中には線が出ず、房と房の境と木の輪郭だけが残る。
+#
+# 実測(dev/note_assets/eval_tree_clumps.py、1080p):
+#   カエデ(葉カード 46万島)  房4〜8 で「描いた木」になり、遠くも形が読める
+#   ヤシ(小葉 3.2万島)       房1 が一番よい。房8 は葉を横に切る
+#   針葉樹(5千島)            近くは整う。遠くはまだ黒い(枝の線と穴)
+# 島の数だけで判定すると機関車のリベット(2万島)まで房になった(実測、
+# 町のデモ)。葉カードの特徴を2つ足す(dev/note_assets/eval_foliage_signature.py):
+#
+#                  小さい島  面積比  面数中央  端の辺の割合
+#   カエデ(葉)      46410    1.00      4         0.56
+#   針葉樹(葉)       5437    1.00      1         1.00
+#   ヘアカード        564    0.96      2         0.33
+#   機関車(リベット) 20343    0.59     34         0.01
+#   ランチア          210    0.19     20         0.10
+#
+# 葉カードは面数が少なく、辺のほとんどがメッシュの端(相手の面が無い)。
+# リベットやボルトは閉じた立体で端が無い。ヘアカードは葉と同じ形なので
+# 房になる(背景のキャラの髪が房になるのは許容)
+FOLIAGE_MIN_ISLANDS = 200
+FOLIAGE_SMALL_PCT = 1.0
+FOLIAGE_MIN_AREA_FRAC = 0.5
+FOLIAGE_MAX_FACES_MED = 4.0
+FOLIAGE_MIN_OPEN_FRAC = 0.3
+
+
+def _kmeans(pts: np.ndarray, k: int, seed: int, iters: int = 25):
+    rng = np.random.default_rng(seed)
+    k = max(1, min(k, len(pts)))
+    ctr = [pts[rng.integers(len(pts))]]
+    for _ in range(1, k):
+        d = np.min(((pts[:, None, :] - np.asarray(ctr)[None, :, :]) ** 2).sum(-1),
+                   axis=1).astype(np.float64)
+        if d.sum() <= 0.0:
+            break
+        p = d / d.sum()
+        ctr.append(pts[rng.choice(len(pts), p=p / p.sum())])
+    ctr = np.asarray(ctr, dtype=np.float64)
+    lab = np.zeros(len(pts), dtype=np.int64)
+    for _ in range(iters):
+        d = ((pts[:, None, :] - ctr[None, :, :]) ** 2).sum(-1)
+        lab = d.argmin(axis=1)
+        for j in range(len(ctr)):
+            m = lab == j
+            if m.any():
+                ctr[j] = pts[m].mean(axis=0)
+    return lab, len(ctr)
+
+
+def foliage_signature(topo: MeshTopology, small, areas) -> dict:
+    """小さい島が葉カードらしいかの特徴。
+
+    面数(葉カードは 1〜2 面)と、島の辺のうちメッシュの端(相手の面が無い)
+    の割合(葉カードはほぼ全部が端。ネジやリベットは閉じた立体で端が無い)。
+    """
+    islands = topo.islands
+    total = float(areas.sum())
+    io = topo._island_of_face
+    n = len(islands)
+    cnt = np.asarray([len(islands[i]) for i in small], dtype=np.float64)
+    # 辺ごとに: 片面(端) / 両面が同じ島(内側) / 両面が別の島(境)。
+    # 片面の辺は face_a/face_b が -1 なので、辺->面の CSR から取る
+    two = topo.two_face
+    one = np.nonzero(topo._inc_count == 1)[0]
+    f_one = topo._inc_faces[topo._inc_first[one]]
+    open_cnt = np.bincount(io[f_one], minlength=n).astype(np.float64)
+    ib = io[topo.face_b[two]]
+    ia2 = io[topo.face_a[two]]
+    same = ia2 == ib
+    inner = np.bincount(ia2[same], minlength=n).astype(np.float64)
+    border = (np.bincount(ia2[~same], minlength=n)
+              + np.bincount(ib[~same], minlength=n)).astype(np.float64)
+    tot = open_cnt + inner + border
+    open_frac = open_cnt[small] / np.maximum(tot[small], 1.0)
+    return {"area_frac": float(areas[small].sum()) / total if total > 0 else 0.0,
+            "faces_med": float(np.median(cnt)), "faces_p90": float(np.percentile(cnt, 90)),
+            "open_med": float(np.median(open_frac)),
+            "open_frac": float(open_cnt[small].sum() / max(tot[small].sum(), 1.0))}
+
+
+def clump_small_islands(topo: MeshTopology, k: int, seed: int,
+                        small_pct: float = FOLIAGE_SMALL_PCT,
+                        min_islands: int = FOLIAGE_MIN_ISLANDS) -> int:
+    """面積が small_pct% 未満の島を 3D 位置で k 房に分けて併合する。
+
+    大きい島(幹・枝・建物)はそのまま。小さい島が min_islands 未満なら
+    何もしない。戻り値は作った房の数(0 = 何もしなかった)。
+    k=0 でも何もしない(= 従来と1ビットも変わらない)。
+    """
+    islands = topo.islands
+    if k <= 0 or len(islands) < min_islands:
+        return 0
+    areas = np.asarray([float(topo.area[f].sum()) for f in islands])
+    total = float(areas.sum())
+    if total <= 0.0:
+        return 0
+    small = np.nonzero(areas < total * (small_pct / 100.0))[0]
+    if len(small) < min_islands:
+        return 0
+    sig = foliage_signature(topo, small, areas)
+    leafy = (sig["area_frac"] >= FOLIAGE_MIN_AREA_FRAC
+             and sig["faces_med"] <= FOLIAGE_MAX_FACES_MED
+             and sig["open_frac"] >= FOLIAGE_MIN_OPEN_FRAC)
+    print(f"[FreePencil] {'葉' if leafy else '葉ではない'}: 小島{len(small)} "
+          f"面積比{sig['area_frac']:.2f} 面数中央{sig['faces_med']:.0f} "
+          f"端{sig['open_frac']:.2f}")
+    if not leafy:
+        return 0
+    # 島の重心(面積で重み付け)。ローカル座標でよい(房分けは相対位置)
+    pts = np.empty((len(small), 3), dtype=np.float64)
+    for n, i in enumerate(small):
+        f = islands[i]
+        w = topo.area[f].astype(np.float64)
+        ws = float(w.sum())
+        pts[n] = (topo.center[f].astype(np.float64) * w[:, None]).sum(0) / ws \
+            if ws > 0 else topo.center[f].mean(0)
+    lab, kk = _kmeans(pts, k, seed)
+    merged = []
+    small_set = set(int(i) for i in small)
+    for i in range(len(islands)):
+        if i not in small_set:
+            merged.append(islands[i])
+    for j in range(kk):
+        members = [islands[int(small[n])] for n in np.nonzero(lab == j)[0]]
+        if members:
+            # 代表面(色のシード)は面番号の一番小さい島の先頭に揃える
+            members.sort(key=lambda a: int(a[0]))
+            merged.append(np.concatenate(members))
+    topo.set_islands(merged)
+    return kk
