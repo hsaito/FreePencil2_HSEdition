@@ -255,6 +255,10 @@ def main():
     sc.fp_ch_depth = 0.0
     # 奥の扱い。STEP3 を組み直す(距離は STEP0 の計測で入っている)
     if FAR != [0.0, 1.0, 0.0]:
+        # 距離は深度チャンネルを切ってから測り直す。STEP0 の計測は地平線
+        # の帯(深度チャンネル)まで線に数えて、奥の終わりが 238 になった
+        # (実測。切ると 71)
+        bpy.ops.freepencil.measure_line_weight()
         sc.fp_lw_far, sc.fp_lw_far_sens, sc.fp_lw_far_fade = FAR
         bpy.ops.freepencil2.link_button()
         say(f"奥の扱い 細く{FAR[0]:g} 減らす{FAR[1]:g} 薄く{FAR[2]:g}  "
