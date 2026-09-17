@@ -2206,6 +2206,83 @@ def t50():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("line weight: far lines shrink to the base line while near lines stay thick")
+def t51():
+    # 奥の扱い(fp_lw_far)。同じ球を手前と奥に置き、奥ほど細く 1.0 で
+    # 奥の球の輪郭だけが精密と同じ細さに戻ることを、輪郭の左端の
+    # アルファ幅で確かめる(t50 と同じ測り方)。OFF(既定)では両方太い。
+    # 距離は測る(fp_lw_far_start/end が 0 のままでは何も挿さない)
+    import math
+    import shutil
+    import tempfile
+
+    def render(far, path):
+        bpy.ops.wm.read_homefile(use_empty=True)
+        objs = []
+        for y in (0.0, 14.0):
+            bpy.ops.mesh.primitive_uv_sphere_add(segments=48, ring_count=24,
+                                                 location=(0, y, 0))
+            bpy.ops.object.shade_smooth()
+            objs.append(bpy.context.object)
+        scene = bpy.context.scene
+        cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+        cam.location = (0, -5, 0)
+        cam.rotation_euler = (math.radians(90), 0, 0)
+        cam.data.lens = 35
+        scene.collection.objects.link(cam)
+        scene.camera = cam
+        scene.fp_use_random_seed = False
+        scene.fp_color_seed = 7
+        scene.fp_enable_compositor_view = False
+        scene.fp_auto_detect_aov = False
+        scene.fp_auto_style = 'WEIGHTED'
+        scene.render.resolution_x = 320
+        scene.render.resolution_y = 240
+        scene.render.film_transparent = True
+        for o in objs:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = objs[0]
+        # 手前の球が奥を隠さないよう、奥の球は上へ(2.2 では手前の球の
+        # 陰に全部入って写らなかった)
+        objs[1].location.z = 5.0
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        assert scene.fp_lw_far_end > scene.fp_lw_far_start > 0.0, (
+            f"奥の距離が測られていない: {scene.fp_lw_far_start} .. {scene.fp_lw_far_end}")
+        scene.fp_lw_far = far
+        bpy.ops.freepencil2.link_button()
+        scene.fp_white_preview = True
+        scene.render.film_transparent = True
+        scene.render.filepath = str(path)
+        bpy.ops.render.render(write_still=True)
+        img = bpy.data.images.load(str(path))
+        w, h = img.size
+        buf = [0.0] * (w * h * 4)
+        img.pixels.foreach_get(buf)
+        bpy.data.images.remove(img)
+
+        def left_edge(y):
+            return next(x for x in range(w) if buf[(y * w + x) * 4 + 3] > 0.5)
+
+        # 手前の球の中心行と、奥の球の中心行(画面座標は下が 0)
+        from bpy_extras.object_utils import world_to_camera_view
+        rows = []
+        for o in objs:
+            v = world_to_camera_view(scene, cam, o.matrix_world.translation)
+            rows.append(int(v.y * h))
+        return left_edge(rows[0]), left_edge(rows[1])
+
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t51_"))
+    try:
+        n0, f0 = render(0.0, tmp / "off.png")
+        n1, f1 = render(1.0, tmp / "on.png")
+        # 手前の球も測った距離の 5% 点より少し奥にあるので、1px は動く
+        assert abs(n1 - n0) <= 2, f"手前の球まで変わった: OFF x={n0} / ON x={n1}"
+        assert f1 - f0 >= 3, f"奥の球が細くなっていない: OFF x={f0} / ON x={f1}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

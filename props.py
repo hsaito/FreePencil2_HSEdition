@@ -403,6 +403,48 @@ def register_props():
             ),
             default=0.0, min=0.0, max=1.0, precision=3
         ),
+        # 奥ほど線を細く・少なく・薄く(深度パス)。町のように奥へ続く
+        # セットで、遠くの線が詰まって黒い塊になるのを防ぐ。既定は全部OFF
+        "fp_lw_far": FloatProperty(
+            name="Thin far lines",
+            description=(
+                "Shrink the line weight with distance so far objects keep "
+                "the thin base line only. 0 = off"
+            ),
+            default=0.0, min=0.0, max=1.0, step=5, precision=2
+        ),
+        "fp_lw_far_sens": FloatProperty(
+            name="Fewer far lines",
+            description=(
+                "Raise the line threshold with distance so weak lines drop "
+                "out far away. 1 = off, 3 = far threshold x3"
+            ),
+            default=1.0, min=1.0, max=4.0, step=10, precision=1
+        ),
+        "fp_lw_far_fade": FloatProperty(
+            name="Lighten far lines",
+            description=(
+                "Fade far lines toward the paper, like aerial perspective. "
+                "0 = off"
+            ),
+            default=0.0, min=0.0, max=1.0, step=5, precision=2
+        ),
+        "fp_lw_far_start": FloatProperty(
+            name="Far start",
+            description=(
+                "Camera distance where the far treatment begins. Measured "
+                "with the thresholds (5th percentile of line depth)"
+            ),
+            default=0.0, min=0.0, precision=1
+        ),
+        "fp_lw_far_end": FloatProperty(
+            name="Far end",
+            description=(
+                "Camera distance where the far treatment is full. Measured "
+                "with the thresholds (95th percentile of line depth)"
+            ),
+            default=0.0, min=0.0, precision=1
+        ),
         "fp_lw_deep_thick": BoolProperty(
             name="Thick in cavities",
             description=(
@@ -821,6 +863,7 @@ def unregister_props():
         "fp_include_antialiasing", "fp_line_sensitivity",
         "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain", "fp_lw_tone", "fp_lw_deep_thick", "fp_lw_density",
         "fp_lw_ao_dist", "fp_lw_ao_blur", "fp_lw_crowd",
+        "fp_lw_far", "fp_lw_far_sens", "fp_lw_far_fade", "fp_lw_far_start", "fp_lw_far_end",
         "fp_lw_crowd_radius", "fp_lw_crowd_threshold", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",
         "fp_ch_mecha", "fp_ch_depth", "fp_ch_bone", "fp_ch_gen", "fp_ch_mat",

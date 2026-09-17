@@ -598,6 +598,21 @@ msgctxt "*"
 msgid "Thick in cavities"
 msgstr "くぼみを太く(逆向き)"
 
+msgid "Thin far lines"
+msgstr "奥ほど細く"
+
+msgid "Fewer far lines"
+msgstr "奥ほど線を減らす"
+
+msgid "Lighten far lines"
+msgstr "奥ほど薄く"
+
+msgid "Far start"
+msgstr "奥の始まり"
+
+msgid "Far end"
+msgstr "奥の終わり"
+
 msgctxt "*"
 msgid "Keep crowded lines thin"
 msgstr "詰まった線は太らせない"

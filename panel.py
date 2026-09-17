@@ -221,6 +221,15 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         sub.prop(scene, "fp_lw_gain", text=t("Weight darkness"), slider=True)
         sub.prop(scene, "fp_lw_tone", text=t("Weight tone"), slider=True)
         sub.prop(scene, "fp_lw_deep_thick", text=t("Thick in cavities"))
+        # 奥の扱い(深度パス)。町のように奥へ続くセット向け。距離は
+        # しきい値と一緒に測る
+        far = sub.column(align=True)
+        far.prop(scene, "fp_lw_far", text=t("Thin far lines"), slider=True)
+        far.prop(scene, "fp_lw_far_sens", text=t("Fewer far lines"), slider=True)
+        far.prop(scene, "fp_lw_far_fade", text=t("Lighten far lines"), slider=True)
+        row = far.row(align=True)
+        row.prop(scene, "fp_lw_far_start", text=t("Far start"))
+        row.prop(scene, "fp_lw_far_end", text=t("Far end"))
         sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
                  slider=True)
         # 半径としきい値は無くなった。詰まりは「太らせたら隣とつながるか」

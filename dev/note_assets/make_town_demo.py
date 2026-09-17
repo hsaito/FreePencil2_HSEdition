@@ -10,7 +10,11 @@
     前に進みながら、ゆっくり左右を見る。
 
   blender -b --factory-startup --python make_town_demo.py -- \
-      [--frames 240] [--res 1920] [--floor 0.55]
+      [--frames 240] [--res 1920] [--floor 0.55] [--far 1,3,0.35]
+
+--far は「奥の扱い」(v2.8 の fp_lw_far / far_sens / far_fade)。奥の線を
+細く・少なく・薄くして、遠くの機関車が黒い塊になるのを防ぐ。距離は
+STEP0 のしきい値計測が一緒に測る。
 """
 from __future__ import annotations
 
@@ -34,6 +38,7 @@ RES_H = RES_W * 9 // 16
 FRAMES = int(arg("--frames", "240"))
 MONO_FLOOR = float(arg("--floor", "0.55"))     # 影の下限。高いほど薄い陰影
 START = int(arg("--start", "0"))
+FAR = [float(v) for v in arg("--far", "0,1,0").split(",")]   # 細く, 減らす, 薄く
 
 sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES_W), "--ss", "1"]
 sys.path.insert(0, str(HERE))
@@ -248,6 +253,12 @@ def main():
         f"密度 {getattr(sc, 'fp_lw_density', -1):.3f}")
     # 地平線(地面の奥と空)の深度差が太い帯になる(実測)。深度は切る
     sc.fp_ch_depth = 0.0
+    # 奥の扱い。STEP3 を組み直す(距離は STEP0 の計測で入っている)
+    if FAR != [0.0, 1.0, 0.0]:
+        sc.fp_lw_far, sc.fp_lw_far_sens, sc.fp_lw_far_fade = FAR
+        bpy.ops.freepencil2.link_button()
+        say(f"奥の扱い 細く{FAR[0]:g} 減らす{FAR[1]:g} 薄く{FAR[2]:g}  "
+            f"距離 {sc.fp_lw_far_start:.1f}..{sc.fp_lw_far_end:.1f}")
     # 薄い陰影: モノ光プレビュー。床を高くして薄く
     sc.fp_mono_floor = MONO_FLOOR
     sc.fp_preview_mode = 'MONO_LIGHT'

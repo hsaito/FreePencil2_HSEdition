@@ -54,6 +54,12 @@ LEVELS = (12, 8, 5, 3, 2)
 # label.startswith("FreePencil") のノードを消すので、それに乗せる
 NODE_LABEL = "FreePencil_line_weight"
 
+# 奥ほど線を減らす分は、線を検出するノードグループの中(ColorRamp の
+# 手前)に挿す。グループは STEP3 で使い回されるので、この目印で毎回
+# 外してから挿し直す
+FAR_LABEL = "FreePencil_line_weight_far"
+DEPTH_SOCKETS = ("Depth", "Z")
+
 
 
 def effective_sensitivity(scene) -> float:
@@ -263,8 +269,78 @@ def dep_chain(tree, ao_sock, alpha_sock, scene, x0, y0):
     return dep
 
 
+def far_wanted(scene) -> bool:
+    """奥の扱い(細く・減らす・薄く)のどれかが入っているか。"""
+    return (float(getattr(scene, "fp_lw_far", 0.0)) > 0.0
+            or float(getattr(scene, "fp_lw_far_sens", 1.0)) > 1.0
+            or float(getattr(scene, "fp_lw_far_fade", 0.0)) > 0.0)
+
+
+def far_range(scene):
+    """奥の扱いが始まる距離と、全部かかる距離。0 のままなら未計測。"""
+    a = float(getattr(scene, "fp_lw_far_start", 0.0))
+    b = float(getattr(scene, "fp_lw_far_end", 0.0))
+    if b <= a:
+        return None
+    return a, b
+
+
+def far_chain(tree, depth_sock, alpha_sock, scene, x0, y0, spread,
+              label=NODE_LABEL):
+    """深度パスから「奥度」0..1 を作る。
+
+    町のデモ(dev/note_assets/eval_far_ideas.py、24案)で比べた結果、
+    奥をぼかすのでも局所密度で薄めるのでもなく、「奥ほど強弱を切って
+    線を間引く」のが一番絵に見えた。手前の太い線は残し、奥は精密と
+    同じ細い線に戻る。奥度は距離を線形に 0..1 にして 0.7 乗(手前から
+    早めに効き始める)。
+
+    背景の深度はクリップ距離なので奥度が 1 になる。輪郭を外へ太らせる
+    画素はシルエットの外にあり、そのままだと手前の球の輪郭まで外側が
+    削れて細くなった(実測: t51)。奥度をシルエットの中だけで取り、
+    正規化ぼかし blur(far*a)/blur(a) で外へ spread px 伸ばす。
+    """
+    rng = far_range(scene)
+    if rng is None:
+        return None
+    a, b = rng
+    sub = _math(tree, "SUBTRACT", x0, y0, b=a)
+    tree.links.new(depth_sock, sub.inputs[0])
+    div = _math(tree, "DIVIDE", x0 + 120, y0, b=b - a)
+    div.use_clamp = True
+    tree.links.new(sub.outputs[0], div.inputs[0])
+    pw = _math(tree, "POWER", x0 + 240, y0, b=0.7)
+    tree.links.new(div.outputs[0], pw.inputs[0])
+    made = [sub, div, pw]
+    last = pw
+    if alpha_sock is not None:
+        masked = _math(tree, "MULTIPLY", x0 + 360, y0)
+        tree.links.new(pw.outputs[0], masked.inputs[0])
+        tree.links.new(alpha_sock, masked.inputs[1])
+        bm = tree.nodes.new("CompositorNodeBlur")
+        bm.location = (x0 + 480, y0)
+        _set_blur(bm, int(spread))
+        tree.links.new(masked.outputs[0], bm.inputs[0])
+        ba = tree.nodes.new("CompositorNodeBlur")
+        ba.location = (x0 + 480, y0 - 120)
+        _set_blur(ba, int(spread))
+        tree.links.new(alpha_sock, ba.inputs[0])
+        floor = _math(tree, "MAXIMUM", x0 + 600, y0 - 120, b=1e-3)
+        tree.links.new(ba.outputs[0], floor.inputs[0])
+        ext = _math(tree, "DIVIDE", x0 + 720, y0)
+        ext.use_clamp = True
+        tree.links.new(bm.outputs[0], ext.inputs[0])
+        tree.links.new(floor.outputs[0], ext.inputs[1])
+        made += [masked, bm, ba, floor, ext]
+        last = ext
+    for n in made:
+        n.label = label
+    last["fp_tap"] = "far"
+    return last
+
+
 def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
-                 alpha_sock=None):
+                 alpha_sock=None, depth_sock=None):
     """線に強弱を付ける枝を組み、出口のソケットを返す。
 
     line_sock は「白背景・黒線」であること。グループの "line" 出力は
@@ -457,6 +533,21 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
         tree.links.new(hw.outputs[0], hw2.inputs[0])
         tree.links.new(keep.outputs[0], hw2.inputs[1])
         hw = hw2
+    # 奥ほど広がりを縮める(奥度 1 で芯だけ)。詰まりの守りと同じ場所
+    far = None
+    far_w = max(0.0, min(1.0, float(getattr(scene, "fp_lw_far", 0.0))))
+    far_fade = max(0.0, min(1.0, float(getattr(scene, "fp_lw_far_fade", 0.0))))
+    if depth_sock is not None and (far_w > 0.0 or far_fade > 0.0):
+        far = far_chain(tree, depth_sock, alpha_sock, scene, x0 + 400, y0 - 700,
+                        spread=reach)
+    if far is not None and far_w > 0.0:
+        shrink = _math(tree, "MULTIPLY_ADD", x0 + 780, y0 - 520, b=-far_w)
+        shrink.inputs[2].default_value = 1.0            # 1 - far * far_w
+        tree.links.new(far.outputs[0], shrink.inputs[0])
+        hw3 = _math(tree, "MULTIPLY", x0 + 820, y0 - 480)
+        tree.links.new(hw.outputs[0], hw3.inputs[0])
+        tree.links.new(shrink.outputs[0], hw3.inputs[1])
+        hw = hw3
     thr = _math(tree, "MULTIPLY_ADD", x0 + 860, y0 - 460, b=-1.0 / reach)
     thr.inputs[2].default_value = 1.0 - 1e-3     # 芯(=1.0)は必ず通す
     tree.links.new(hw.outputs[0], thr.inputs[0])
@@ -545,6 +636,21 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
         last = shade
         shade["fp_tap"] = "shade"
 
+    # 奥ほど紙の色へ寄せる(空気遠近)。濃さの強弱と同じく表示の薄さで
+    # 決めてリニアの倍率にする: 倍率 = 1 - (far * fade)^2.2
+    if far is not None and far_fade > 0.0:
+        fm = _math(tree, "MULTIPLY", x0 + 1250, y0 - 660, b=far_fade)
+        tree.links.new(far.outputs[0], fm.inputs[0])
+        fl = _math(tree, "POWER", x0 + 1380, y0 - 660, b=2.2)
+        tree.links.new(fm.outputs[0], fl.inputs[0])
+        fdk = _math(tree, "SUBTRACT", x0 + 1500, y0 - 660, a=1.0)
+        tree.links.new(fl.outputs[0], fdk.inputs[1])
+        faded = _math(tree, "MULTIPLY", x0 + 1600, y0 - 480)
+        tree.links.new(last.outputs[0], faded.inputs[0])
+        tree.links.new(fdk.outputs[0], faded.inputs[1])
+        last = faded
+        faded["fp_tap"] = "far_fade"
+
     out = tree.nodes.new("CompositorNodeInvert")
     out.location = (x0 + 1660, y0 - 400)
     out.label = NODE_LABEL
@@ -613,9 +719,15 @@ def apply(scene, view_layer, tree, target_socket):
     ao = compat.render_layer_socket(rl, compat.AO_SOCKETS)
     if ao is None:
         return None
+    depth = None
+    if far_wanted(scene) and far_range(scene) is not None:
+        view_layer.use_pass_z = True
+        depth = compat.render_layer_socket(rl, DEPTH_SOCKETS)
+    apply_far_sens(tree, scene, depth)
     line_sock = target_socket.links[0].from_socket
     out, ink_sock = build_weight(tree, line_sock, ao, scene,
-                                 alpha_sock=rl.outputs.get("Alpha"))
+                                 alpha_sock=rl.outputs.get("Alpha"),
+                                 depth_sock=depth)
     for lnk in list(target_socket.links):
         tree.links.remove(lnk)
     tree.links.new(out, target_socket)
@@ -634,6 +746,102 @@ def apply(scene, view_layer, tree, target_socket):
         tree.links.new(ink_sock, mx.inputs[1])
         tree.links.new(mx.outputs[0], asock)
     return out
+
+
+def _descending_ramps(group):
+    """線を出す側の ColorRamp(白→暗)。fp_core.apply_line_tuning と同じ判定。"""
+    def luma(c):
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    out = []
+    for node in group.nodes:
+        if node.type != "VALTORGB":
+            continue
+        ramp = node.color_ramp
+        if len(ramp.elements) < 2:
+            continue
+        cols = node.get("fp_orig_colors")
+        if cols is not None and len(cols) != len(ramp.elements):
+            cols = None
+        first = cols[0] if cols else ramp.elements[0].color
+        last = cols[-1] if cols else ramp.elements[-1].color
+        if luma(first) > luma(last):
+            out.append(node)
+    return out
+
+
+def apply_far_sens(tree, scene, depth_sock):
+    """奥ほど線を減らす: 検出グループの ColorRamp の手前で勾配を割る。
+
+    しきい値を奥度で上げるのと同じ。倍率 s(fp_lw_far_sens)で、奥度 1 の
+    所は勾配が 1/s になる(= 感度 s と同じ)。fp_core には触らず、
+    fp_core.apply_far_relief と同じく「毎回外してから挿す」。
+    グループに Depth の入力を1本足す(無いときだけ)。
+    戻り値は挿した ColorRamp の数。
+    """
+    from . import fp_core
+    gnode = next((n for n in tree.nodes
+                  if n.type == "GROUP" and n.node_tree is not None
+                  and n.node_tree.name.startswith(fp_core.NODE_GROUP_PREFIX)), None)
+    if gnode is None:
+        return 0
+    group = gnode.node_tree
+    # --- 前回の挿し込みを外す
+    for ramp in [n for n in group.nodes if n.type == "VALTORGB"]:
+        src = ramp.get("fp_far_src")
+        if src is None:
+            continue
+        for lk in list(ramp.inputs[0].links):
+            group.links.remove(lk)
+        node = group.nodes.get(src["node"])
+        if node is not None and int(src["index"]) < len(node.outputs):
+            group.links.new(node.outputs[int(src["index"])], ramp.inputs[0])
+        del ramp["fp_far_src"]
+    for n in [n for n in group.nodes if n.label == FAR_LABEL]:
+        group.nodes.remove(n)
+
+    sens = max(1.0, min(4.0, float(getattr(scene, "fp_lw_far_sens", 1.0))))
+    if depth_sock is None or sens <= 1.0 or far_range(scene) is None:
+        return 0
+    if "Depth" not in [i.name for i in gnode.inputs]:
+        group.interface.new_socket("Depth", in_out="INPUT",
+                                   socket_type="NodeSocketFloat")
+    tree.links.new(depth_sock, gnode.inputs["Depth"])
+    gi = next((n for n in group.nodes if n.type == "GROUP_INPUT"), None)
+    if gi is None or "Depth" not in gi.outputs:
+        return 0
+    alpha = gi.outputs.get("Alpha")
+    if alpha is not None and not gnode.inputs["Alpha"].is_linked:
+        rl = next((n for n in tree.nodes if n.type == "R_LAYERS"), None)
+        if rl is not None and "Alpha" in rl.outputs:
+            tree.links.new(rl.outputs["Alpha"], gnode.inputs["Alpha"])
+    # 線の検出は Sobel の 1〜2px 幅なので、伸ばす量は少なくてよい
+    far = far_chain(group, gi.outputs["Depth"], alpha, scene, -900, -900,
+                    spread=6, label=FAR_LABEL)
+    # 倍率 = 1 / (1 + (s - 1) * far)
+    den = _math(group, "MULTIPLY_ADD", -600, -900, b=sens - 1.0)
+    den.inputs[2].default_value = 1.0
+    group.links.new(far.outputs[0], den.inputs[0])
+    fac = _math(group, "DIVIDE", -480, -900, a=1.0)
+    group.links.new(den.outputs[0], fac.inputs[1])
+    den.label = fac.label = FAR_LABEL
+    count = 0
+    for ramp in _descending_ramps(group):
+        sock = ramp.inputs[0]
+        if not sock.is_linked:
+            continue
+        src = sock.links[0].from_socket
+        ramp["fp_far_src"] = {"node": src.node.name,
+                              "index": list(src.node.outputs).index(src)}
+        mul = _math(group, "MULTIPLY", ramp.location.x - 160, ramp.location.y - 40)
+        mul.label = FAR_LABEL
+        mul.hide = True
+        group.links.new(src, mul.inputs[0])
+        group.links.new(fac.outputs[0], mul.inputs[1])
+        for lk in list(sock.links):
+            group.links.remove(lk)
+        group.links.new(mul.outputs[0], sock)
+        count += 1
+    return count
 
 
 # ---------------------------------------------------------------- 計測
@@ -732,6 +940,7 @@ def measure_edges(scene, view_layer, percent=100):
     if not comp.inputs[0].is_linked:
         return None
     ensure_ao_pass(scene, view_layer)
+    view_layer.use_pass_z = True
 
     tmp = tempfile.mkdtemp(prefix="fp_lw_")
     keep_pct = scene.render.resolution_percentage
@@ -784,6 +993,12 @@ def measure_edges(scene, view_layer, percent=100):
     except (AttributeError, TypeError):
         pass
     tree.links.new(dep.outputs[0], fo2.inputs["dep"])
+    # 奥の扱い(fp_lw_far*)の距離も同じレンダで測る。線の画素の深度の
+    # 5% 点から 95% 点。深度は倍率に依らない
+    z_sock = compat.render_layer_socket(rl, DEPTH_SOCKETS)
+    if z_sock is not None:
+        compat.file_output_add_slot(fo2, "z", "OPEN_EXR", "RGBA")
+        tree.links.new(z_sock, fo2.inputs["z"])
     # 色管理を通すと値が変わり、分位点がずれる
     try:
         fo.format.color_management = "OVERRIDE"
@@ -805,6 +1020,7 @@ def measure_edges(scene, view_layer, percent=100):
         scene.render.resolution_percentage = percent
         bpy.ops.render.render(write_still=False)
         d_all = _load_float(_find(tmp, "dep"))
+        z_all = _load_float(_find(tmp, "z")) if z_sock is not None else None
         ln, _ = _load_gray(_find(tmp, "line"))
         al, _ = _load_gray(_find(tmp, "sil"))
     finally:
@@ -832,6 +1048,21 @@ def measure_edges(scene, view_layer, percent=100):
         scene.fp_lw_density = float(on.sum()) / float(max(int(sil.sum()), 1))
     except (AttributeError, TypeError):
         pass
+    if z_all is not None and z_all.shape == ln.shape:
+        # シルエットの縁の画素は深度が背景(クリップ距離)になることがあり、
+        # 4.2 では 95% 点が 1000 になった(実測)。縁を 1px 削った内側だけ
+        inner = sil.copy()
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                inner &= np.roll(np.roll(sil, dy, 0), dx, 1)
+        z = z_all[on & inner]
+        z = z[np.isfinite(z) & (z < 1e6)]
+        if len(z) >= 200:
+            try:
+                scene.fp_lw_far_start = float(np.percentile(z, 5))
+                scene.fp_lw_far_end = float(np.percentile(z, 95))
+            except (AttributeError, TypeError):
+                pass
     d = d_all[on]
     n = len(LEVELS)
     return [float(np.percentile(d, 100.0 * (k + 1) / n)) for k in range(n - 1)]
