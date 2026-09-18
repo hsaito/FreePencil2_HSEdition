@@ -472,6 +472,24 @@ def register_props():
             ),
             default=False
         ),
+        "fp_lw_ink": FloatProperty(
+            name="Ink darkness",
+            description=(
+                "How dark the darkest line is, as seen on screen. 1 = black, "
+                "0.75 = dark grey. Needs STEP3 again"
+            ),
+            default=1.0, min=0.2, max=1.0, step=5, precision=2
+        ),
+        "fp_lw_soften": FloatProperty(
+            name="Soften edges",
+            description=(
+                "Blur the line edges by this many pixels (at 200%) after "
+                "anti-aliasing, before the 50% downscale. 0 = SMAA only"
+            ),
+            # 1px(1080pで0.5px)では SMAA だけとほぼ同じで、2px で段が消えた
+            # (実測: 町のデモ4倍拡大)
+            default=2.0, min=0.0, max=4.0, step=10, precision=1
+        ),
         "fp_lw_tone": FloatProperty(
             name="Weight tone",
             description=(
@@ -887,7 +905,7 @@ def unregister_props():
         "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain", "fp_lw_tone", "fp_lw_deep_thick", "fp_lw_density",
         "fp_lw_ao_dist", "fp_lw_ao_blur", "fp_lw_crowd",
         "fp_lw_far", "fp_lw_far_sens", "fp_lw_far_fade", "fp_lw_far_start", "fp_lw_far_end",
-        "fp_foliage_clumps", "fp_gap_fill",
+        "fp_foliage_clumps", "fp_gap_fill", "fp_lw_ink", "fp_lw_soften",
         "fp_lw_crowd_radius", "fp_lw_crowd_threshold", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",
         "fp_ch_mecha", "fp_ch_depth", "fp_ch_bone", "fp_ch_gen", "fp_ch_mat",

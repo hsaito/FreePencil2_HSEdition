@@ -658,11 +658,33 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     aa = tree.nodes.new("CompositorNodeAntiAliasing")
     aa.location = (x0 + 1600, y0 - 560)
     aa.label = NODE_LABEL
-    compat.set_node_value(aa, "threshold", 0.1)
-    compat.set_node_value(aa, "contrast_limit", 0.2)
+    compat.set_node_value(aa, "threshold", 0.05)
+    compat.set_node_value(aa, "contrast_limit", 0.1)
     tree.links.new(last.outputs[0], aa.inputs[0])
     last = aa
     aa["fp_tap"] = "aa"
+    # SMAA だけでは足りなかった(「アンチエイリアス弱くない？」)。縮小前に
+    # 1px ぼかすと 1080p では 0.5px の柔らかさになり、段が消える
+    soften = float(getattr(scene, "fp_lw_soften", 0.0))
+    pct = max(1, getattr(scene.render, "resolution_percentage", 100))
+    soften_px = soften * pct / 200.0
+    if soften_px > 0.05:
+        sb = tree.nodes.new("CompositorNodeBlur")
+        sb.location = (x0 + 1600, y0 - 660)
+        sb.label = NODE_LABEL
+        _set_blur(sb, max(1, int(round(soften_px))))
+        tree.links.new(last.outputs[0], sb.inputs[0])
+        last = sb
+        sb["fp_tap"] = "soften"
+    # 線の濃さの上限(表示)。1 = 黒。0.75 で濃い灰色。リニアの倍率は
+    # 濃さの強弱と同じ換算: 1 - (1 - dark)^2.2
+    ink_dark = max(0.2, min(1.0, float(getattr(scene, "fp_lw_ink", 1.0))))
+    if ink_dark < 1.0:
+        mul = 1.0 - (1.0 - ink_dark) ** 2.2
+        inkm = _math(tree, "MULTIPLY", x0 + 1600, y0 - 760, b=mul)
+        tree.links.new(last.outputs[0], inkm.inputs[0])
+        last = inkm
+        inkm["fp_tap"] = "ink_dark"
 
     out = tree.nodes.new("CompositorNodeInvert")
     out.location = (x0 + 1660, y0 - 400)

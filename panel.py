@@ -221,6 +221,8 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         sub.prop(scene, "fp_lw_bin", text=t("Weight binarize"), slider=True)
         sub.prop(scene, "fp_lw_gain", text=t("Weight darkness"), slider=True)
         sub.prop(scene, "fp_lw_tone", text=t("Weight tone"), slider=True)
+        sub.prop(scene, "fp_lw_ink", text=t("Ink darkness"), slider=True)
+        sub.prop(scene, "fp_lw_soften", text=t("Soften edges"), slider=True)
         sub.prop(scene, "fp_lw_deep_thick", text=t("Thick in cavities"))
         # 奥の扱い(深度パス)。町のように奥へ続くセット向け。距離は
         # しきい値と一緒に測る

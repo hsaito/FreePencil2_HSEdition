@@ -10,7 +10,7 @@
     前に進みながら、ゆっくり左右を見る。
 
   blender -b --factory-startup --python make_town_demo.py -- \
-      [--frames 240] [--res 1920] [--floor 0.55] [--style BACKGROUND] [--gap 0]
+      [--frames 240] [--res 1920] [--floor 0.55] [--style BACKGROUND] [--gap 0] [--ink 0.75] [--soften 2]
 
 --style は STEP0 の仕上がり(WEIGHTED = キャラ / BACKGROUND = 手描き背景)。
 手描き背景は奥の扱い(細く・少なく・薄く)と葉の房まとめを STEP0 が入れる。
@@ -40,6 +40,8 @@ MONO_FLOOR = float(arg("--floor", "0.55"))     # 影の下限。高いほど薄�
 START = int(arg("--start", "0"))
 STYLE = arg("--style", "WEIGHTED")
 GAP = int(arg("--gap", "0"))
+INK = float(arg("--ink", "1.0"))        # 線の濃さ(表示)。0.75 で濃い灰色
+SOFTEN = float(arg("--soften", "2.0"))  # 縁のぼかし px(200%)
 
 sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES_W), "--ss", "1"]
 sys.path.insert(0, str(HERE))
@@ -236,6 +238,8 @@ def main():
     sc.fp_color_seed = 42
     sc.fp_auto_style = STYLE
     sc.fp_gap_fill = GAP
+    sc.fp_lw_ink = INK
+    sc.fp_lw_soften = SOFTEN
     sc.render.engine = fp_batch.eevee_engine()
     sc.eevee.taa_render_samples = 24
     sc.render.resolution_x = RES_W

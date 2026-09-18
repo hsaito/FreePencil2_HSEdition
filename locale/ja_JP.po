@@ -673,6 +673,12 @@ msgctxt "*"
 msgid "Character plus special handling for sets: far lines get thin, fewer and lighter with distance, and foliage is painted in clumps instead of leaf by leaf"
 msgstr "キャラの中身に、セット向けの特殊処理を足す: 奥ほど線を細く・少なく・薄く、葉は1枚ずつでなく房にまとめて塗る"
 
+msgid "Ink darkness"
+msgstr "線の濃さ"
+
+msgid "Soften edges"
+msgstr "縁をやわらかく(px)"
+
 msgid "Foliage clumps"
 msgstr "葉を房に(個数)"
 
