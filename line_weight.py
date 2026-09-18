@@ -651,6 +651,19 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
         last = faded
         faded["fp_tap"] = "far_fade"
 
+    # 太らせた線は 2値(しきい値)で決めているので、縁がギザギザのまま
+    # 50% 縮小に入り、1080p で 2段階のアンチエイリアスしか残らなかった
+    # (実測: 町のデモ、4倍拡大で縁が 0/0.5/1 の3値)。縮小の前に SMAA を
+    # 掛けて縁をなだらかにする。線の太さは変えない(縁 1px を混ぜるだけ)
+    aa = tree.nodes.new("CompositorNodeAntiAliasing")
+    aa.location = (x0 + 1600, y0 - 560)
+    aa.label = NODE_LABEL
+    compat.set_node_value(aa, "threshold", 0.1)
+    compat.set_node_value(aa, "contrast_limit", 0.2)
+    tree.links.new(last.outputs[0], aa.inputs[0])
+    last = aa
+    aa["fp_tap"] = "aa"
+
     out = tree.nodes.new("CompositorNodeInvert")
     out.location = (x0 + 1660, y0 - 400)
     out.label = NODE_LABEL
