@@ -512,6 +512,21 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
                 tree.links.new(acc.outputs[0], mx.inputs[0])
                 tree.links.new(wg.outputs[0], mx.inputs[1])
                 acc = mx
+        # 隙間のマスクは画素ごとに 0/1 なので、線に沿って太い区間と細い
+        # 区間が交互に出て、車のフェンダーの縁が破線に見えた(実測: 町の
+        # デモ、詰まりの守り 0 だと連続した1本の線になる)。到達幅で
+        # ぼかして、太さが線に沿ってなだらかに変わるようにする。ぼかすと
+        # 山が低くなるので 1.5 倍して 1 で止める
+        # (到達幅の 1 倍と 2 倍で比べ、どちらも破線が消えた。1.5 倍にする)
+        cb = tree.nodes.new("CompositorNodeBlur")
+        cb.location = (x0 + 1040, y0 - 60)
+        cb.label = NODE_LABEL
+        _set_blur(cb, max(2, int(round(1.5 * reach))))
+        tree.links.new(acc.outputs[0], cb.inputs[0])
+        boost = _math(tree, "MULTIPLY", x0 + 1070, y0 - 60, b=1.5)
+        boost.use_clamp = True
+        tree.links.new(cb.outputs[0], boost.inputs[0])
+        acc = boost
         crowd_w = _math(tree, "MULTIPLY", x0 + 1100, y0 - 60, b=crowd)
         tree.links.new(acc.outputs[0], crowd_w.inputs[0])
         crowd_w["fp_tap"] = "crowd"
