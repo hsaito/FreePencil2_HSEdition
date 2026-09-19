@@ -2158,6 +2158,7 @@ def t49():
         and abs(scene.fp_lw_far_fade - 0.35) < 1e-6, "背景なのに奥の扱いが入らない"
     assert scene.fp_foliage_clumps == 4, "背景なのに葉の房が入らない"
     assert scene.fp_gap_fill == 6 and abs(scene.fp_lw_ink - 0.75) < 1e-6, "背景の隙間埋め/線の濃さが入らない"
+    assert abs(scene.fp_lw_strength - 0.5) < 1e-6, "背景なのに線が細くならない"
     assert scene.fp_ch_depth == 0.0, "背景なのに深度チャンネルが生きている"
     assert scene.fp_lw_far_end > scene.fp_lw_far_start > 0.0, "奥の距離が測られていない"
     assert any(n.get("fp_tap") == "far" for n in
@@ -2168,7 +2169,9 @@ def t49():
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     assert not scene.fp_line_weight and _lw_node_count(scene) == 0, "精密に戻らない"
     assert abs(scene.fp_auto_split_floor - 5.0) < 1e-6
-    assert scene.fp_lw_far == 0.0 and scene.fp_foliage_clumps == 0         and scene.fp_gap_fill == 0 and scene.fp_lw_ink == 1.0, "精密に戻しても特殊処理が残る"
+    assert (scene.fp_lw_far == 0.0 and scene.fp_foliage_clumps == 0
+            and scene.fp_gap_fill == 0 and scene.fp_lw_ink == 1.0
+            and scene.fp_lw_strength == 1.0), "精密に戻しても特殊処理が残る"
     bpy.ops.wm.read_homefile(use_empty=True)
 
 

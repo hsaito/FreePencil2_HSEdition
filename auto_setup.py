@@ -125,9 +125,12 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         scene.fp_lw_far_fade = 0.35 if background else 0.0
         # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
         scene.fp_foliage_clumps = 4 if background else 0
-        # 葉の隙間埋め 6px(200% 基準 = 1080p で 3px)。線の濃さは 0.75
+        # 葉の隙間埋め 6px(200% 基準 = 1080p で 3px)。線の濃さは 0.75。
+        # 背景は線を細く(強さ 0.5 = 最大 6px、1080p で 3px)。太いのは
+        # 近くに寄ったときだけでよい
         scene.fp_gap_fill = 6 if background else 0
         scene.fp_lw_ink = 0.75 if background else 1.0
+        scene.fp_lw_strength = 0.5 if background else 1.0
         # 深度チャンネルは地面と空の境(深度の段差)を太い帯にする(実測)。
         # 背景では切る。奥の距離の計測もその帯を線に数えて狂っていた
         # (奥の終わり 238 -> 切ると 71)
