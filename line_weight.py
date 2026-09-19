@@ -859,6 +859,35 @@ def apply_far_sens(tree, scene, depth_sock):
     fac = _math(group, "DIVIDE", -480, -900, a=1.0)
     group.links.new(den.outputs[0], fac.inputs[1])
     den.label = fac.label = FAR_LABEL
+    # シルエットは減らさない。奥の人物や小物は輪郭まで間引かれて消えて
+    # いた(実測: 町のデモ)。深度の段差(相対 3% 以上)を輪郭とみなし、
+    # そこは倍率を 1 に戻す。alpha の縁だけだと物と物の重なりが守れない。
+    # 深度は背景でクリップ距離になるので、物と空の境も段差になる
+    edge_f = compat.new_node(group, "CompositorNodeFilter")
+    edge_f.location = (-900, -1100)
+    compat.set_filter_type(edge_f, "SOBEL")
+    group.links.new(gi.outputs["Depth"], edge_f.inputs["Image"])
+    rel = _math(group, "DIVIDE", -760, -1100)
+    group.links.new(edge_f.outputs[0], rel.inputs[0])
+    zf = _math(group, "MAXIMUM", -760, -1200, b=1e-3)
+    group.links.new(gi.outputs["Depth"], zf.inputs[0])
+    group.links.new(zf.outputs[0], rel.inputs[1])
+    is_edge = _math(group, "GREATER_THAN", -640, -1100, b=0.03)
+    group.links.new(rel.outputs[0], is_edge.inputs[0])
+    grow = group.nodes.new("CompositorNodeDilateErode")
+    grow.location = (-520, -1100)
+    _set_dilate(grow, 2)
+    group.links.new(is_edge.outputs[0], grow.inputs[0])
+    # 倍率' = fac + (1 - fac) * edge
+    one_m = _math(group, "SUBTRACT", -400, -1100, a=1.0)
+    group.links.new(fac.outputs[0], one_m.inputs[1])
+    keep = _math(group, "MULTIPLY_ADD", -280, -1100)
+    group.links.new(one_m.outputs[0], keep.inputs[0])
+    group.links.new(grow.outputs[0], keep.inputs[1])
+    group.links.new(fac.outputs[0], keep.inputs[2])
+    for n in (edge_f, rel, zf, is_edge, grow, one_m, keep):
+        n.label = FAR_LABEL
+    fac = keep
     count = 0
     for ramp in _descending_ramps(group):
         sock = ramp.inputs[0]

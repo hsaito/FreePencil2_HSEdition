@@ -40,6 +40,29 @@ def _channel_painted(objs, name: str) -> bool:
     return False
 
 
+def _looks_like_ground(obj, targets) -> bool:
+    """視界より大きい平面か。面が少なく、薄く、他のどの物よりも 2 倍以上広い。
+
+    中央値の 5 倍で判定すると、小物の多い町では家の土台や階段(平たい
+    板)まで地面になった(実測)。一番大きい物と比べる。
+    """
+    from mathutils import Vector
+    if len(obj.data.polygons) > 8:
+        return False
+
+    def dims(o):
+        pts = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        return Vector((max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3)))
+    d = dims(obj)
+    xy = max(d.x, d.y)
+    if xy <= 0.0 or d.z > xy * 0.02:
+        return False
+    others = [max(dims(o)) for o in targets if o is not obj]
+    if not others:
+        return False
+    return xy >= max(others) * 2.0
+
+
 class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
     """Analyze the scene, apply recommended settings and run STEP1-3."""
     bl_idname = "freepencil.auto_setup"
@@ -77,6 +100,15 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         if not targets:
             self.report({'ERROR'}, "No mesh objects")
             return None
+        # 手描き背景: 地面(視界より大きい平面)は塗らない。塗ると地平線が
+        # 太い輪郭になり、黒い帯が出る(実測: 町のデモは手で外していた)
+        if getattr(scene, "fp_auto_style", 'PRECISE') == 'BACKGROUND':
+            ground = [o for o in targets if _looks_like_ground(o, targets)]
+            if ground and len(ground) < len(targets):
+                for o in ground:
+                    o.select_set(False)
+                    print(f"[freepencil.auto_setup] 地面とみなして塗らない: {o.name}")
+                targets = [o for o in targets if o not in ground]
         view_layer.objects.active = targets[0]
 
         # --- 仕上がり。精密 = v2.7 の出力そのまま、キャラ = AO の強弱、
@@ -93,6 +125,14 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         scene.fp_lw_far_fade = 0.35 if background else 0.0
         # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
         scene.fp_foliage_clumps = 4 if background else 0
+        # 葉の隙間埋め 6px(200% 基準 = 1080p で 3px)。線の濃さは 0.75
+        scene.fp_gap_fill = 6 if background else 0
+        scene.fp_lw_ink = 0.75 if background else 1.0
+        # 深度チャンネルは地面と空の境(深度の段差)を太い帯にする(実測)。
+        # 背景では切る。奥の距離の計測もその帯を線に数えて狂っていた
+        # (奥の終わり 238 -> 切ると 71)
+        if background:
+            scene.fp_ch_depth = 0.0
 
         # --- おすすめ設定(STEP0 のチェックが入っている項目のみ適用) ---
         if scene.fp_auto_sharp:

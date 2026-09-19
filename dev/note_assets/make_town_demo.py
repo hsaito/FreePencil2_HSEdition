@@ -187,9 +187,9 @@ def stage(meshes, length):
     ground.scale = (4000, 4000, 1)
     ground.location = (0, length / 2, -0.01)
     dm.grey([ground])
-    # 地面は STEP1 の塗り分けに入れない。入れると地平線(地面と空の境)が
-    # 輪郭として太い線になり、黒い帯が出た(実測)。塗らなければ AOV が
-    # 背景と同じ黒になり、境が出ない。モデルの影は陰影のパスから出る
+    # 地面を塗り分けに入れると地平線(地面と空の境)が輪郭として太い線に
+    # なり、黒い帯が出た(実測)。手描き背景モードは STEP0 が地面(視界より
+    # 大きい平面)を自動で外すので、ここでは選択に入れて任せる
     ground.name = "FP_ground"
     cd = bpy.data.cameras.new("C")
     cd.lens = 32.0
@@ -248,7 +248,7 @@ def main():
     sc.render.image_settings.color_mode = "RGBA"
     sc.render.film_transparent = True
     bpy.ops.object.select_all(action="DESELECT")
-    for o in meshes:
+    for o in meshes + [bpy.data.objects["FP_ground"]]:
         o.select_set(True)
     bpy.context.view_layer.objects.active = meshes[0]
     # しきい値の計測は通りの真ん中あたりで
@@ -257,17 +257,12 @@ def main():
     assert sc.render.resolution_percentage == 200
     say(f"しきい値 {[round(getattr(sc, f'fp_lw_e{i}'), 4) for i in range(1, 5)]}  "
         f"密度 {getattr(sc, 'fp_lw_density', -1):.3f}")
-    # 地平線(地面の奥と空)の深度差が太い帯になる(実測)。深度は切る
-    sc.fp_ch_depth = 0.0
-    # 手描き背景: 奥の距離は深度チャンネルを切ってから測り直す。STEP0 の
-    # 計測は地平線の帯(深度チャンネル)まで線に数えて、奥の終わりが 238 に
-    # なった(実測。切ると 71)
-    if sc.fp_lw_far > 0.0 or sc.fp_lw_far_sens > 1.0:
-        bpy.ops.freepencil.measure_line_weight()
-        bpy.ops.freepencil2.link_button()
-        say(f"奥の扱い 細く{sc.fp_lw_far:g} 減らす{sc.fp_lw_far_sens:g} "
-            f"薄く{sc.fp_lw_far_fade:g}  距離 {sc.fp_lw_far_start:.1f}..{sc.fp_lw_far_end:.1f}  "
-            f"葉の房 {sc.fp_foliage_clumps}  隙間 {sc.fp_gap_fill}")
+    if STYLE != 'BACKGROUND':
+        # キャラ: 地面も塗られ、深度チャンネルも生きているので手で外す
+        sc.fp_ch_depth = 0.0
+    say(f"奥の扱い 細く{sc.fp_lw_far:g} 減らす{sc.fp_lw_far_sens:g} "
+        f"薄く{sc.fp_lw_far_fade:g}  距離 {sc.fp_lw_far_start:.1f}..{sc.fp_lw_far_end:.1f}  "
+        f"葉の房 {sc.fp_foliage_clumps}  隙間 {sc.fp_gap_fill}  深度ch {sc.fp_ch_depth:g}")
     # 薄い陰影: モノ光プレビュー。床を高くして薄く
     sc.fp_mono_floor = MONO_FLOOR
     sc.fp_preview_mode = 'MONO_LIGHT'

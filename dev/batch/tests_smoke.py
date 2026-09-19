@@ -2157,6 +2157,8 @@ def t49():
     assert scene.fp_lw_far == 1.0 and scene.fp_lw_far_sens == 3.0 \
         and abs(scene.fp_lw_far_fade - 0.35) < 1e-6, "背景なのに奥の扱いが入らない"
     assert scene.fp_foliage_clumps == 4, "背景なのに葉の房が入らない"
+    assert scene.fp_gap_fill == 6 and abs(scene.fp_lw_ink - 0.75) < 1e-6, "背景の隙間埋め/線の濃さが入らない"
+    assert scene.fp_ch_depth == 0.0, "背景なのに深度チャンネルが生きている"
     assert scene.fp_lw_far_end > scene.fp_lw_far_start > 0.0, "奥の距離が測られていない"
     assert any(n.get("fp_tap") == "far" for n in
                compat.get_compositor_tree(scene).nodes), "背景なのに奥度のノードが無い"
@@ -2166,7 +2168,7 @@ def t49():
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     assert not scene.fp_line_weight and _lw_node_count(scene) == 0, "精密に戻らない"
     assert abs(scene.fp_auto_split_floor - 5.0) < 1e-6
-    assert scene.fp_lw_far == 0.0 and scene.fp_foliage_clumps == 0, "精密に戻しても特殊処理が残る"
+    assert scene.fp_lw_far == 0.0 and scene.fp_foliage_clumps == 0         and scene.fp_gap_fill == 0 and scene.fp_lw_ink == 1.0, "精密に戻しても特殊処理が残る"
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
@@ -2367,6 +2369,124 @@ def t51():
         # 手前の球も測った距離の 5% 点より少し奥にあるので、1px は動く
         assert abs(n1 - n0) <= 2, f"手前の球まで変わった: OFF x={n0} / ON x={n1}"
         assert f1 - f0 >= 3, f"奥の球が細くなっていない: OFF x={f0} / ON x={f1}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("background: a ground plane far larger than everything is left unpainted")
+def t53():
+    # 地面を塗ると地平線が太い帯になる(実測)。手描き背景では STEP0 が
+    # 「他のどの物よりも 2 倍以上広い薄い平面」を塗り分けから外す。
+    # キャラでは外さない(v2.7 と同じく選択した物は全部塗る)
+    import math
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 1))
+    cube = bpy.context.object
+    bpy.ops.mesh.primitive_plane_add(size=400.0)
+    ground = bpy.context.object
+    bpy.ops.mesh.primitive_plane_add(size=3.0, location=(3, 0, 0.5))
+    slab = bpy.context.object          # 小さい板は地面ではない
+    scene = bpy.context.scene
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.location = (0, -8, 2)
+    cam.rotation_euler = (math.radians(85), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.fp_use_random_seed = False
+    scene.fp_color_seed = 7
+    scene.fp_enable_compositor_view = False
+    scene.fp_auto_detect_aov = False
+    scene.render.resolution_x = 160
+    scene.render.resolution_y = 120
+
+    def run(style):
+        for o in (cube, ground, slab):
+            for ca in list(o.data.color_attributes):
+                o.data.color_attributes.remove(ca)
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = cube
+        scene.fp_auto_style = style
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        return {o.name: "mecha_color" in o.data.color_attributes for o in (cube, ground, slab)}
+
+    painted = run('BACKGROUND')
+    assert painted[cube.name] and painted[slab.name], f"背景で物が塗られていない: {painted}"
+    assert not painted[ground.name], "背景で地面が塗られた"
+    painted = run('WEIGHTED')
+    assert painted[ground.name], "キャラで地面が塗られない(v2.7 と違う)"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("gap fill: a narrow slit between two plates stops drawing a line")
+def t54():
+    # 葉の隙間埋め(fp_gap_fill)。1枚の板に細い縦の穴を開ける(2枚の板だと
+    # 別の島になって色差の線が残る)。埋めなければ穴の縁が線になる。埋めると
+    # 穴の中にインクが無い。板の外周の線は残る(閉じ = 膨張してから収縮
+    # なので外側の輪郭は動かない)
+    import math
+    import shutil
+    import tempfile
+
+    def render(gap, path):
+        bpy.ops.wm.read_homefile(use_empty=True)
+        import bmesh
+        bpy.ops.mesh.primitive_grid_add(x_subdivisions=50, y_subdivisions=3, size=2.0,
+                                        rotation=(math.radians(90), 0, 0))
+        plate = bpy.context.object
+        bm = bmesh.new()
+        bm.from_mesh(plate.data)
+        bm.faces.ensure_lookup_table()
+        hole = [f for f in bm.faces
+                if abs(f.calc_center_median().x) < 0.05 and abs(f.calc_center_median().y) < 0.4]
+        bmesh.ops.delete(bm, geom=hole, context="FACES")
+        bm.to_mesh(plate.data)
+        bm.free()
+        plates = [plate]
+        scene = bpy.context.scene
+        cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+        cam.location = (0, -6, 0)
+        cam.rotation_euler = (math.radians(90), 0, 0)
+        scene.collection.objects.link(cam)
+        scene.camera = cam
+        scene.fp_use_random_seed = False
+        scene.fp_color_seed = 7
+        scene.fp_enable_compositor_view = False
+        scene.fp_auto_detect_aov = False
+        scene.fp_auto_style = 'WEIGHTED'
+        scene.render.resolution_x = 240
+        scene.render.resolution_y = 180
+        scene.render.film_transparent = True
+        for o in plates:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = plates[0]
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        scene.fp_gap_fill = gap
+        bpy.ops.freepencil2.link_button()
+        scene.fp_white_preview = True
+        scene.render.film_transparent = True
+        scene.render.filepath = str(path)
+        bpy.ops.render.render(write_still=True)
+        img = bpy.data.images.load(str(path))
+        w, h = img.size
+        buf = [0.0] * (w * h * 4)
+        img.pixels.foreach_get(buf)
+        bpy.data.images.remove(img)
+        # 穴(中央の列 ±3px、上下 1/3 の中)にある濃い画素の数
+        dark = 0
+        for y in range(h * 5 // 12, h * 7 // 12):
+            for x in range(w // 2 - 4, w // 2 + 5):
+                i = (y * w + x) * 4
+                if buf[i + 3] > 0.5 and (buf[i] + buf[i + 1] + buf[i + 2]) / 3 < 0.6:
+                    dark += 1
+        return dark
+
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t54_"))
+    try:
+        d0 = render(0, tmp / "g0.png")
+        d1 = render(24, tmp / "g24.png")
+        assert d0 > 20, f"埋めない状態で隙間に線が無い: {d0}"
+        assert d1 < d0 * 0.2, f"隙間を埋めても線が残る: 0px {d0} / 24px {d1}"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         bpy.ops.wm.read_homefile(use_empty=True)
