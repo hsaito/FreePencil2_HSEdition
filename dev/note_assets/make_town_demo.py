@@ -10,11 +10,11 @@
     前に進みながら、ゆっくり左右を見る。
 
   blender -b --factory-startup --python make_town_demo.py -- \
-      [--frames 240] [--res 1920] [--floor 0.55] [--style BACKGROUND] [--gap 0] [--ink 0.75] [--soften 2]
+      [--frames 240] [--res 1920] [--floor 0.55] [--style BACKGROUND] [--gap 6] [--ink 0.75] [--soften 2]
 
 --style は STEP0 の仕上がり(WEIGHTED = キャラ / BACKGROUND = 手描き背景)。
 手描き背景は奥の扱い(細く・少なく・薄く)と葉の房まとめを STEP0 が入れる。
---gap は葉の隙間埋め(px、既定 0)。
+--gap / --ink / --soften は STEP0 の既定を上書きしたいときだけ。
 """
 from __future__ import annotations
 
@@ -39,9 +39,9 @@ FRAMES = int(arg("--frames", "240"))
 MONO_FLOOR = float(arg("--floor", "0.55"))     # 影の下限。高いほど薄い陰影
 START = int(arg("--start", "0"))
 STYLE = arg("--style", "WEIGHTED")
-GAP = int(arg("--gap", "0"))
-INK = float(arg("--ink", "1.0"))        # 線の濃さ(表示)。0.75 で濃い灰色
-SOFTEN = float(arg("--soften", "2.0"))  # 縁のぼかし px(200%)
+GAP = arg("--gap")          # 葉の隙間埋め px。省略時は STEP0 の既定(背景 6)
+INK = arg("--ink")          # 線の濃さ(表示)。省略時は STEP0 の既定(背景 0.75)
+SOFTEN = arg("--soften")    # 縁のぼかし px(200%)。省略時は既定 2
 
 sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES_W), "--ss", "1"]
 sys.path.insert(0, str(HERE))
@@ -237,9 +237,8 @@ def main():
         setattr(sc, p_, False)
     sc.fp_color_seed = 42
     sc.fp_auto_style = STYLE
-    sc.fp_gap_fill = GAP
-    sc.fp_lw_ink = INK
-    sc.fp_lw_soften = SOFTEN
+    if SOFTEN is not None:
+        sc.fp_lw_soften = float(SOFTEN)
     sc.render.engine = fp_batch.eevee_engine()
     sc.eevee.taa_render_samples = 24
     sc.render.resolution_x = RES_W
@@ -260,6 +259,13 @@ def main():
     if STYLE != 'BACKGROUND':
         # キャラ: 地面も塗られ、深度チャンネルも生きているので手で外す
         sc.fp_ch_depth = 0.0
+    # STEP0 の既定を上書きしたいときだけ(STEP3 を組み直す)
+    if GAP is not None or INK is not None:
+        if GAP is not None:
+            sc.fp_gap_fill = int(GAP)
+        if INK is not None:
+            sc.fp_lw_ink = float(INK)
+        bpy.ops.freepencil2.link_button()
     say(f"奥の扱い 細く{sc.fp_lw_far:g} 減らす{sc.fp_lw_far_sens:g} "
         f"薄く{sc.fp_lw_far_fade:g}  距離 {sc.fp_lw_far_start:.1f}..{sc.fp_lw_far_end:.1f}  "
         f"葉の房 {sc.fp_foliage_clumps}  隙間 {sc.fp_gap_fill}  深度ch {sc.fp_ch_depth:g}")
