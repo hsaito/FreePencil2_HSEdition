@@ -43,6 +43,7 @@ FRAMES = int(arg("--frames", "240"))
 MONO_FLOOR = float(arg("--floor", "0.55"))     # 影の下限。高いほど薄い陰影
 START = int(arg("--start", "0"))
 ONLY_FRAMES = [int(v) for v in arg("--only-frames", "").split(",") if v]   # 経路の確認用
+SAMPLES = int(arg("--samples", "16"))   # 24 -> 16。サンプル数は時間にほぼ効かない(実測)
 STYLE = arg("--style", "WEIGHTED")
 ORBIT = arg("--orbit")             # 回り込む相手(名前の一部)。無ければ直進だけ
 WALK_END = float(arg("--walk-end", "95"))   # 回り込み版で直進が終わる y
@@ -332,12 +333,31 @@ def main():
     sc.fp_mono_floor = MONO_FLOOR
     sc.fp_preview_mode = 'MONO_LIGHT'
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "town.blend"))
-    for f in (ONLY_FRAMES or range(START, FRAMES)):
+    if ONLY_FRAMES:
+        for f in ONLY_FRAMES:
+            aim(cam, f, length)
+            sc.frame_set(f + 1)
+            fp_batch.render_still(sc, OUT / "seq" / f"f{f:04d}.png", 1)
+        say(f"完了 {OUT}")
+        return
+    # 1枚ずつ render_still で撮ると、毎回シーンの同期(4百万面の転送)で
+    # 38秒かかっていた。カメラをキーフレームにしてアニメーションで撮ると
+    # 同期が1回で済み 10秒/枚(実測、絵は同一)。F12 用のフック
+    # (render_size: 縮小を外す)はアニメーションでは効かないので、縮小を
+    # 自分で 1.0 にしてフックを外す
+    for f in range(FRAMES):
         aim(cam, f, length)
-        sc.frame_set(f + 1)
-        fp_batch.render_still(sc, OUT / "seq" / f"f{f:04d}.png", 1)
-        if (f + 1) % 24 == 0:
-            say(f"  {f + 1}/{FRAMES}")
+        cam.keyframe_insert("location", frame=f + 1)
+        cam.keyframe_insert("rotation_euler", frame=f + 1)
+    from freepencil2 import render_size
+    render_size.unregister_handlers()
+    for node in render_size._composite_scales(sc):
+        render_size._set_scale(node, 1.0, 1.0)
+    sc.frame_start, sc.frame_end = START + 1, FRAMES
+    (OUT / "seq").mkdir(parents=True, exist_ok=True)
+    sc.render.filepath = str(OUT / "seq" / "f")
+    sc.eevee.taa_render_samples = SAMPLES
+    bpy.ops.render.render(animation=True)
     say(f"完了 {OUT}")
 
 
