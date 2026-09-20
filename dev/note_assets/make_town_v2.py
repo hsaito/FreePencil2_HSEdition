@@ -481,7 +481,8 @@ def street(rng):
     # 横町の歩道
     for cy in CROSS:
         for sy in (-1, 1):
-            for x0, x1 in ((-70.0, -ROAD), (ROAD, 70.0)):
+            # 角は大通りの歩道と重なる(同じ天面で Z ファイト)ので CURB から
+            for x0, x1 in ((-70.0, -CURB), (CURB, 70.0)):
                 S.box((x0 + x1) / 2, cy + sy * (XW + WALK / 2), 0.075, x1 - x0, WALK, 0.15)
     # 中央線(破線)・外側線・停止線・横断歩道
     y = ylo
@@ -578,7 +579,7 @@ def street(rng):
     for cy in CROSS:
         for sx in (-1, 1):
             for sy in (-1, 1):
-                S.box(sx * (ROAD + 1.6), cy + sy * (XW + 1.0), 0.165, 2.4, 0.4, 0.03)   # 歩道の天面(0.15)から浮かす
+                S.box(sx * (ROAD + 1.6), cy + sy * (XW + 1.0), 0.175, 2.4, 0.4, 0.03)   # 底が歩道の天面(0.15)に重ならないよう浮かす
     for y in range(int(ylo), int(yhi), 2):
         if any(abs(y - c) < XW + 1 for c in CROSS):
             continue
