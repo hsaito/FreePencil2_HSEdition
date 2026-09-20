@@ -57,7 +57,7 @@ def _set_scale(node, x, y) -> None:
 
 @persistent
 def _render_pre(scene, _depsgraph=None):
-    """レンダーの直前に縮小を外す。値は控えておく。"""
+    """レンダー(F12 / アニメーション)の開始時に縮小を外す。値は控えておく。"""
     for node in _composite_scales(scene):
         sx = node.inputs.get("X")
         sy = node.inputs.get("Y")
@@ -79,9 +79,14 @@ def _render_post(scene, _depsgraph=None):
         del node[SAVED_Y]
 
 
+# render_pre/post(フレームごと)だとアニメーションで効かなかった。
+# フレームの手前で外してもコンポジタが見る評価済みツリーには届かず、
+# 2倍のキャンバスに半分の絵が入った(実測: 被写体の幅 0.50)。
+# render_init/complete(レンダー全体の前後)なら F12 もアニメーションも
+# 等倍で出る(実測: 幅 1.00)
 _HANDLERS = (
-    ("render_pre", _render_pre),
-    ("render_post", _render_post),
+    ("render_init", _render_pre),
+    ("render_complete", _render_post),
     ("render_cancel", _render_post),
 )
 

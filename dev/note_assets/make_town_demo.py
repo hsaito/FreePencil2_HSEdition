@@ -342,17 +342,12 @@ def main():
         return
     # 1枚ずつ render_still で撮ると、毎回シーンの同期(4百万面の転送)で
     # 38秒かかっていた。カメラをキーフレームにしてアニメーションで撮ると
-    # 同期が1回で済み 10秒/枚(実測、絵は同一)。F12 用のフック
-    # (render_size: 縮小を外す)はアニメーションでは効かないので、縮小を
-    # 自分で 1.0 にしてフックを外す
+    # 同期が1回で済み 10秒/枚(実測、絵は同一)。縮小を外すフック
+    # (render_size)は render_init で効くので、そのまま等倍で出る
     for f in range(FRAMES):
         aim(cam, f, length)
         cam.keyframe_insert("location", frame=f + 1)
         cam.keyframe_insert("rotation_euler", frame=f + 1)
-    from freepencil2 import render_size
-    render_size.unregister_handlers()
-    for node in render_size._composite_scales(sc):
-        render_size._set_scale(node, 1.0, 1.0)
     sc.frame_start, sc.frame_end = START + 1, FRAMES
     (OUT / "seq").mkdir(parents=True, exist_ok=True)
     sc.render.filepath = str(OUT / "seq" / "f")

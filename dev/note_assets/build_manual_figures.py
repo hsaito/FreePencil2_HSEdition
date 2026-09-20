@@ -80,7 +80,7 @@ def shrink(src: Path, dst: Path, width: int) -> None:
 
 def main() -> None:
     FIG.mkdir(exist_ok=True)
-    ui = OUT / "ui27"
+    ui = OUT / "ui28"
 
     # 1. サイドバー全体。「N キーで出るのはこれ」を示す1枚なので、
     #    ビューポートごと入れて位置関係が分かるようにする。

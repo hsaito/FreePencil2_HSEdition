@@ -2495,6 +2495,66 @@ def t54():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("thin lines: an animation render also comes out full size (render_init hook)")
+def t55():
+    # F12 では縮小を外すフックが効いていたが、アニメーションでは効かず
+    # 2倍のキャンバスに半分の絵が入っていた(実測: 被写体の幅 0.50)。
+    # render_init/complete に移して両方で等倍にする。2枚だけ撮って
+    # 2枚目の被写体の幅がキャンバスのほぼ全部であることを見る
+    import math
+    import shutil
+    import tempfile
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_monkey_add()
+    obj = bpy.context.object
+    scene = bpy.context.scene
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.location = (0, -6, 0)
+    cam.rotation_euler = (math.radians(90), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.fp_use_random_seed = False
+    scene.fp_enable_compositor_view = False
+    scene.fp_auto_detect_aov = False
+    scene.render.resolution_x = 160
+    scene.render.resolution_y = 120
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    assert scene.render.resolution_percentage == 200
+    scene.fp_white_preview = True
+    scene.render.film_transparent = True
+    for f in (1, 2):
+        cam.keyframe_insert("location", frame=f)
+    scene.frame_start, scene.frame_end = 1, 2
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t55_"))
+
+    def width_frac(path):
+        img = bpy.data.images.load(str(path))
+        w, h = img.size
+        buf = [0.0] * (w * h * 4)
+        img.pixels.foreach_get(buf)
+        bpy.data.images.remove(img)
+        xs = [i % w for i in range(w * h) if buf[i * 4 + 3] > 0.5]
+        return (w, h), (max(xs) - min(xs)) / w
+
+    try:
+        scene.render.filepath = str(tmp / "still.png")
+        bpy.ops.render.render(write_still=True)
+        size_s, frac_s = width_frac(tmp / "still.png")
+        scene.render.filepath = str(tmp / "a_")
+        bpy.ops.render.render(animation=True)
+        size_a, frac_a = width_frac(tmp / "a_0002.png")
+        assert size_s == size_a == (320, 240), (size_s, size_a)
+        # 半分の絵なら幅も半分になる。F12 と同じ幅であること
+        assert abs(frac_a - frac_s) < 0.03, (
+            f"アニメーションの絵が F12 と違う大きさ: F12 {frac_s:.2f} / アニメ {frac_a:.2f}")
+        assert frac_s > 0.4, f"F12 の絵が半分のまま: {frac_s:.2f}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

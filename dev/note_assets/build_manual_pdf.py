@@ -23,7 +23,11 @@ import markdown
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "MANUAL_ja.md"
-OUT = ROOT / "dist" / "FreePencil2_マニュアル_v2.7.0.pdf"
+import re as _re
+_ver = _re.search(r'"version":\s*\((\d+),\s*(\d+),\s*(\d+)\)',
+                  (ROOT / "__init__.py").read_text(encoding="utf-8"))
+VERSION = ".".join(_ver.groups()) if _ver else "0.0.0"
+OUT = ROOT / "dist" / f"FreePencil2_マニュアル_v{VERSION}.pdf"
 
 CHROME_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
