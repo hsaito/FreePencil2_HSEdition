@@ -255,6 +255,33 @@ def shophouse(cx, cy, w, d, floors, face, rng, idx):
     # 雨樋、室外機、屋上
     gx, gy = wall_point(cx, cy, w, d, face, along / 2 - 0.25, 0.1)
     P.cyl(gx, gy, h / 2, 0.06, h, 8)
+    # 袖看板(壁から通りへ突き出す縦長の板)。日本の商店街の顔
+    if floors >= 2 and rng.random() < 0.8:
+        sx_, sy_ = wall_point(cx, cy, w, d, face, -along / 2 + 0.6, 0.75)
+        z0, z1 = fh + 0.8, min(h - 0.6, fh + 0.8 + 3.0)
+        if face in ("-x", "+x"):
+            P.box(sx_, sy_, (z0 + z1) / 2, 1.3, 0.16, z1 - z0)
+            P.box(sx_ - nx * 0.4, sy_, z1 - 0.3, 0.7, 0.06, 0.06)
+            P.box(sx_ - nx * 0.4, sy_, z0 + 0.3, 0.7, 0.06, 0.06)
+        else:
+            P.box(sx_, sy_, (z0 + z1) / 2, 0.16, 1.3, z1 - z0)
+            P.box(sx_, sy_ - ny * 0.4, z1 - 0.3, 0.06, 0.7, 0.06)
+            P.box(sx_, sy_ - ny * 0.4, z0 + 0.3, 0.06, 0.7, 0.06)
+    # 立て看板(A型)とプランター、シャッターボックス
+    ax_, ay_ = wall_point(cx, cy, w, d, face, rng.uniform(-along * 0.3, along * 0.3), 1.6)
+    if rng.random() < 0.6:
+        if face in ("-x", "+x"):
+            P.box(ax_, ay_, 0.5, 0.45, 0.6, 1.0)
+        else:
+            P.box(ax_, ay_, 0.5, 0.6, 0.45, 1.0)
+    for k in range(rng.randint(0, 2)):
+        px_, py_ = wall_point(cx, cy, w, d, face, (-1) ** k * (along / 2 - 1.0), 0.6)
+        P.box(px_, py_, 0.25, 0.5, 0.5, 0.5)
+    bx_, by_ = wall_point(cx, cy, w, d, face, 0.0, 0.05)
+    if face in ("-x", "+x"):
+        P.box(bx_, by_, 3.05, 0.35, glass_w + 0.8, 0.3)
+    else:
+        P.box(bx_, by_, 3.05, glass_w + 0.8, 0.35, 0.3)
     for _ in range(rng.randint(1, 3)):
         side = rng.choice([s for s in ("-x", "+x", "-y", "+y") if s != face])
         sa, _ = side_dims(w, d, side)
@@ -534,6 +561,37 @@ def street(rng):
         S.cyl(-(ROAD + 1.0), y, 2.4, 0.45, 0.06, 16, rot=(math.radians(90), 0, 0))
     S.cyl(ROAD + 1.2, 30.0, 0.55, 0.22, 1.1, 12)
     S.box(ROAD + 1.2, 30.0, 1.2, 0.5, 0.5, 0.2)
+    # 植樹枡(街路樹の根元の縁石)
+    for y in range(-50, 132, 18):
+        if any(abs(y - c) < XW + 6 for c in CROSS):
+            continue
+        for sx in (-1, 1):
+            x = sx * (ROAD + 1.9)
+            S.box(x, y, 0.19, 1.6, 1.6, 0.08)
+            S.box(x, y, 0.1, 1.3, 1.3, 0.12)
+    # 通りをまたぐ電線(電柱から反対側の街灯・建物へ)
+    for k, (px, py) in enumerate(poles):
+        if k % 2 == 0:
+            S.bar((px, py, 9.9), (-(ROAD + 1.0), py + 3.0, 8.4), 0.018)
+            S.bar((px, py, 9.6), (-(ROAD + 1.0), py + 3.0, 8.1), 0.018)
+    # 歩道の点字ブロック帯(交差点の手前)と側溝の蓋
+    for cy in CROSS:
+        for sx in (-1, 1):
+            for sy in (-1, 1):
+                S.box(sx * (ROAD + 1.6), cy + sy * (XW + 1.0), 0.155, 2.4, 0.4, 0.01)
+    for y in range(int(ylo), int(yhi), 2):
+        if any(abs(y - c) < XW + 1 for c in CROSS):
+            continue
+        S.box(-(ROAD - 0.25), y + 1.0, 0.006, 0.45, 1.9, 0.012)
+    # 遠景: 通りの先(北)に高いビル群、南に低い街並み
+    for k in range(9):
+        bx = rng.uniform(-70, 70)
+        by = rng.uniform(190, 320)
+        bw, bd, bh = rng.uniform(16, 30), rng.uniform(16, 30), rng.uniform(30, 75)
+        S.box(bx, by, bh / 2, bw, bd, bh)
+        S.box(bx, by, bh + 0.4, bw + 0.6, bd + 0.6, 0.8)
+        for fl in range(2, int(bh // 3.4)):
+            S.box(bx, by - bd / 2 - 0.06, fl * 3.4, bw - 2.0, 0.12, 1.5)
     return S.join()
 
 
@@ -677,7 +735,7 @@ def assets(rng):
              "lancia-delta": "cars", "hyundai-veloster": "cars", "audi_r8": "cars",
              "mclaren_720s": "cars", "man_01": "people",
              "standing-cool-bald": "people", "stylized-male": "people", "anime-girl": "people"}
-    for pat, height in (("european-maple", 6.5), ("police-car", 1.5), ("nypd_toyota", 1.5),
+    for pat, height in (("european-maple", 5.6), ("police-car", 1.5), ("nypd_toyota", 1.5),
                         ("lancia-delta", 1.45), ("hyundai-veloster", 1.4), ("audi_r8", 1.25),
                         ("mclaren_720s", 1.2),   # メルセデス SLR は複製すると STEP0 の後のレンダで落ちる(実測)
                         ("man_01", 1.75), ("standing-cool-bald", 1.8), ("stylized-male", 1.75),
@@ -709,8 +767,8 @@ def assets(rng):
         if any(abs(y - c) < XW + 6 for c in CROSS):
             continue
         for sx in (-1, 1):
-            put("european-maple", sx * (ROAD + 1.9), y + rng.uniform(-1.5, 1.5),
-                rng.uniform(0, 360), rng.uniform(0.85, 1.2))
+            put("european-maple", sx * (ROAD + 1.9), y,
+                rng.uniform(0, 360), rng.uniform(0.8, 1.1))
     # 走っている車(左側通行: 進行方向左の車線)
     y = -60.0
     while y < 130:
