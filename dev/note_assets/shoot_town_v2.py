@@ -9,6 +9,7 @@
   blender -b --factory-startup --python shoot_town_v2.py -- \
       [--blend out/town_v2/town.blend] [--out out/town_v2/shot] [--frames 720]
       [--only-frames 60,300,600]   経路の確認用(その番号だけ撮る)
+      [--preview]                  960x540・4サンプルで全フレーム(動きの確認、約 15 分)
 """
 from __future__ import annotations
 
@@ -28,6 +29,9 @@ BLEND = Path(arg("--blend", str(HERE / "out" / "town_v2" / "town.blend"))).resol
 OUT = Path(arg("--out", str(HERE / "out" / "town_v2" / "shot"))).resolve()
 FRAMES = int(arg("--frames", "720"))
 ONLY = [int(v) for v in arg("--only-frames", "").split(",") if v]
+PREVIEW = "--preview" in ARGV        # 低解像度・少サンプルで動きだけ確かめる
+RES = int(arg("--res", "960" if PREVIEW else "1920"))
+SAMPLES = int(arg("--samples", "4" if PREVIEW else "16"))
 FPS = 24
 
 sys.path.insert(0, str(HERE.parent / "batch"))
@@ -94,17 +98,25 @@ def aim(cam, f):
 
 
 def moving_cars(sc):
-    """走る車: 複製された車のうち車道上の物を、通りに沿って動かす。"""
+    """走る車: 大通りの車線にいる車を全部走らせる(止まった車と重ならないように)。
+
+    半分を止めておくと、走る車が止まった車に重なった(実測)。車線の車は
+    全部同じ速さで走らせ(追い越しが無いので重ならない)、横切る車が
+    交差点を通る 2〜5.5 秒の間に交差点(y -8..4)へ来る車は手前へずらす。
+    """
     cars = [o for o in sc.objects if o.type == "MESH" and o.name.startswith("asset_")
             and any(k in o.name for k in ("police", "toyota", "lancia", "hyundai", "audi", "mclaren"))
             and not o.hide_viewport and abs(o.matrix_world.translation.x) < ROAD]
     moved = 0
-    for i, o in enumerate(cars):
+    for o in cars:
         x = o.matrix_world.translation.x
         speed = 9.0 if x < 0 else -8.0          # m/s。x<0 は北向き(左側通行、正面は +y に回してある)
-        if i % 2:
-            continue                             # 半分は停まっている(信号待ち)
         y0 = o.matrix_world.translation.y
+        for _ in range(4):
+            hit = any(-8.0 < y0 + speed * t < 4.0 for t in (2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5))
+            if not hit:
+                break
+            y0 -= 12.0 * (1 if speed > 0 else -1)
         for f in (1, FRAMES):
             o.location.y = y0 + speed * (f - 1) / FPS
             o.keyframe_insert("location", frame=f)
@@ -152,7 +164,9 @@ def main():
     # カットの境目は補間せず飛ぶ(1フレームで切り替わるので線形でも同じ)
     sc.frame_start, sc.frame_end = 1, FRAMES
     sc.render.filepath = str(OUT / "f")
-    sc.eevee.taa_render_samples = 16
+    sc.render.resolution_x = RES
+    sc.render.resolution_y = RES * 9 // 16
+    sc.eevee.taa_render_samples = SAMPLES
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT.parent / "town_shot.blend"))
     bpy.ops.render.render(animation=True)
     print(f"@@@ 完了 {OUT}", flush=True)
