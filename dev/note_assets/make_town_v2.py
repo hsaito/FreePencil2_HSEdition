@@ -475,36 +475,36 @@ def street(rng):
     for sx in (-1, 1):
         segs = [(ylo, CROSS[0] - XW), (CROSS[0] + XW, CROSS[1] - XW), (CROSS[1] + XW, yhi)]
         for y0, y1 in segs:
+            # 縁石は歩道の箱そのもの(別の箱を重ねると天面が 5mm 差で
+            # Z ファイトし、遠くでちらついた。実測)
             S.box(sx * (ROAD + WALK / 2), (y0 + y1) / 2, 0.075, WALK, y1 - y0, 0.15)
-            S.box(sx * (ROAD + 0.08), (y0 + y1) / 2, 0.075, 0.16, y1 - y0, 0.16)
     # 横町の歩道
     for cy in CROSS:
         for sy in (-1, 1):
             for x0, x1 in ((-70.0, -ROAD), (ROAD, 70.0)):
                 S.box((x0 + x1) / 2, cy + sy * (XW + WALK / 2), 0.075, x1 - x0, WALK, 0.15)
-                S.box((x0 + x1) / 2, cy + sy * (XW + 0.08), 0.075, x1 - x0, 0.16, 0.16)
     # 中央線(破線)・外側線・停止線・横断歩道
     y = ylo
     while y < yhi:
         if not any(abs(y - c) < XW + 4 for c in CROSS):
-            S.box(0.0, y + 2.5, 0.005, 0.15, 5.0, 0.01)
+            S.box(0.0, y + 2.5, 0.015, 0.15, 5.0, 0.03)
         y += 10.0
     for sx in (-1, 1):
         for y0, y1 in [(ylo, CROSS[0] - XW - 4), (CROSS[0] + XW + 4, CROSS[1] - XW - 4), (CROSS[1] + XW + 4, yhi)]:
-            S.box(sx * (ROAD - 0.6), (y0 + y1) / 2, 0.005, 0.15, y1 - y0, 0.01)
+            S.box(sx * (ROAD - 0.6), (y0 + y1) / 2, 0.015, 0.15, y1 - y0, 0.03)
     for cy in CROSS:
         for sy in (-1, 1):
             yy = cy + sy * (XW + 1.4)
             for k in range(-4, 5):
-                S.box(k * 1.1, yy, 0.005, 0.5, 2.4, 0.01)
-            S.box(sy * 2.75, cy + sy * (XW + 3.2), 0.005, ROAD, 0.4, 0.01)       # 停止線
+                S.box(k * 1.1, yy, 0.015, 0.5, 2.4, 0.03)
+            S.box(sy * 2.75, cy + sy * (XW + 3.2), 0.015, ROAD, 0.4, 0.03)       # 停止線
         for sx in (-1, 1):
             xx = sx * (ROAD + 1.4)
             for k in range(-3, 4):
-                S.box(xx, cy + k * 1.1, 0.005, 2.4, 0.5, 0.01)
+                S.box(xx, cy + k * 1.1, 0.015, 2.4, 0.5, 0.03)
     # マンホール
     for y in range(int(ylo) + 7, int(yhi), 23):
-        S.cyl(rng.choice((-2.4, 2.4)), y, 0.005, 0.35, 0.01, 16)
+        S.cyl(rng.choice((-2.4, 2.4)), y, 0.015, 0.35, 0.03, 16)
     # 電柱(片側、22m 間隔)と電線、街灯(反対側)
     poles = []
     for y in range(int(ylo) + 6, int(yhi), 22):
@@ -578,11 +578,11 @@ def street(rng):
     for cy in CROSS:
         for sx in (-1, 1):
             for sy in (-1, 1):
-                S.box(sx * (ROAD + 1.6), cy + sy * (XW + 1.0), 0.155, 2.4, 0.4, 0.01)
+                S.box(sx * (ROAD + 1.6), cy + sy * (XW + 1.0), 0.165, 2.4, 0.4, 0.03)   # 歩道の天面(0.15)から浮かす
     for y in range(int(ylo), int(yhi), 2):
         if any(abs(y - c) < XW + 1 for c in CROSS):
             continue
-        S.box(-(ROAD - 0.25), y + 1.0, 0.006, 0.45, 1.9, 0.012)
+        S.box(-(ROAD - 0.25), y + 1.0, 0.015, 0.45, 1.9, 0.03)
     # 遠景: 通りの先(北)に高いビル群、南に低い街並み
     for k in range(9):
         bx = rng.uniform(-70, 70)
@@ -770,17 +770,19 @@ def assets(rng):
             put("european-maple", sx * (ROAD + 1.9), y,
                 rng.uniform(0, 360), rng.uniform(0.8, 1.1))
     # 走っている車(左側通行: 進行方向左の車線)
+    # アセットの正面は -y(実測)。北向き(+y、左側通行なので x<0)は 180 度回す
     y = -60.0
     while y < 130:
-        put(rng.choice(cars), -2.6, y, 0)          # 北向き(左車線)
+        put(rng.choice(cars), -2.6, y, 180)        # 北向き(左車線)
         y += rng.uniform(16, 34)
     y = -48.0
     while y < 130:
-        put(rng.choice(cars), 2.6, y, 180)         # 南向き
+        put(rng.choice(cars), 2.6, y, 0)           # 南向き
         y += rng.uniform(18, 36)
     for cy in CROSS:
         for x in (-28.0, 24.0, 44.0):
-            put(rng.choice(cars), x, cy + rng.choice((-2.6, 2.6)), rng.choice((90, -90)))
+            side = rng.choice((-2.6, 2.6))
+            put(rng.choice(cars), x, cy + side, -90 if side < 0 else 90)   # 左側通行
     # 駐車場・コンビニの車
     for (cx, cy, d_, w_, face) in PARKING_LOTS:
         along, depth = side_dims(d_, w_, face)
@@ -824,7 +826,9 @@ def stage():
     ground.name = "FP_ground"
     cd = bpy.data.cameras.new("C")
     cd.lens = 28.0
-    cd.clip_end = 6000
+    # 6000 だと深度バッファの精度が落ち、重なった面がちらつく。町は 300m
+    cd.clip_start = 0.3
+    cd.clip_end = 1200
     cam = bpy.data.objects.new("C", cd)
     sc.collection.objects.link(cam)
     sc.camera = cam

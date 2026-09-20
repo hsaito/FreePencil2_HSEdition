@@ -101,7 +101,7 @@ def moving_cars(sc):
     moved = 0
     for i, o in enumerate(cars):
         x = o.matrix_world.translation.x
-        speed = 9.0 if x < 0 else -8.0          # m/s。x<0 は北向き(左側通行)
+        speed = 9.0 if x < 0 else -8.0          # m/s。x<0 は北向き(左側通行、正面は +y に回してある)
         if i % 2:
             continue                             # 半分は停まっている(信号待ち)
         y0 = o.matrix_world.translation.y
@@ -118,7 +118,7 @@ def moving_cars(sc):
         src = cars[0]
         c = src.copy()
         sc.collection.objects.link(c)
-        c.rotation_euler = (0, 0, math.radians(90))
+        c.rotation_euler = (0, 0, math.radians(-90))     # 正面(-y)を -x へ
         for f, x in ((1, 22.0), (int(8 * FPS), -26.0)):
             c.location = (x, -2.6, 0.0)
             c.keyframe_insert("location", frame=f)
