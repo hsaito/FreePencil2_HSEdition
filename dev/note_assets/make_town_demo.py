@@ -68,7 +68,7 @@ LOTS = [
     ("modern-house", 6.5, "L"), ("japan-apartment", 14.0, "R"),
     ("tree_autumn", 5.5, "L"), ("coconut-tree", 6.0, "R"),
     ("police-car", 1.5, "C"), ("nypd_toyota", 1.5, "C"),
-    ("lancia-delta", 1.45, "C"), ("low-poly-car", 1.4, "C"),
+    ("lancia-delta", 1.45, "C"), ("hyundai-veloster", 1.4, "C"),
     ("man_01", 1.75, "L"), ("standing-cool-bald", 1.8, "R"),
     ("anime-girl", 1.6, "L"), ("stylized-male", 1.75, "R"),
     ("trash_can", 1.0, "L"), ("school-locker", 1.9, "R"),
