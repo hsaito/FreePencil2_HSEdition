@@ -112,11 +112,12 @@ def moving_cars(sc):
         x = o.matrix_world.translation.x
         speed = 9.0 if x < 0 else -8.0          # m/s。x<0 は北向き(左側通行、正面は +y に回してある)
         y0 = o.matrix_world.translation.y
-        for _ in range(4):
-            hit = any(-8.0 < y0 + speed * t < 4.0 for t in (2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5))
-            if not hit:
-                break
-            y0 -= 12.0 * (1 if speed > 0 else -1)
+        # 横切る車が交差点を通る間(2〜5.5秒)に交差点へ来る車は外す
+        # (ずらすと隣の車に重なる)
+        if any(-8.0 < y0 + speed * t < 4.0 for t in (2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5)):
+            o.hide_render = True
+            o.hide_viewport = True
+            continue
         for f in (1, FRAMES):
             o.location.y = y0 + speed * (f - 1) / FPS
             o.keyframe_insert("location", frame=f)

@@ -780,10 +780,10 @@ def assets(rng):
     while y < 130:
         put(rng.choice(cars), 2.6, y, 0)           # 南向き
         y += rng.uniform(18, 36)
+    # 横町の車は北側の車線(東向き)だけ。南側は撮影で横切る車が走る
     for cy in CROSS:
-        for x in (-28.0, 24.0, 44.0):
-            side = rng.choice((-2.6, 2.6))
-            put(rng.choice(cars), x, cy + side, -90 if side < 0 else 90)   # 左側通行
+        for x in (-40.0, 34.0, 50.0):
+            put(rng.choice(cars), x, cy + 2.6, 90)                        # 左側通行(東向き)
     # 駐車場・コンビニの車
     for (cx, cy, d_, w_, face) in PARKING_LOTS:
         along, depth = side_dims(d_, w_, face)
@@ -807,9 +807,7 @@ def assets(rng):
             continue
         put(rng.choice(people), sx * (ROAD + rng.uniform(0.9, 2.9)), y, rng.uniform(0, 360))
         n += 1
-    for cy in CROSS:
-        for k in range(3):
-            put(rng.choice(people), rng.uniform(-3, 3), cy + rng.choice((-1, 1)) * (XW + 1.4), rng.choice((0, 180)))
+    # 人は歩道だけ(横断歩道の上には置かない)
     for y in (12.5, 88.5):
         put("manchester-acacia", -(ROAD + 2.4), y + 2.5, 90)
         put("trash_can", -(ROAD + 2.6), y + 5.0, 0)
