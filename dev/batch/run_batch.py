@@ -34,6 +34,21 @@ import scan_models  # noqa: E402
 DEFAULT_BLENDER = r"C:\blender\blender-4.5.2-windows-x64\blender.exe"
 
 
+def _validated_path(raw: str, *, must_exist: bool, is_file: bool) -> Path:
+    if not raw or any(ch in raw for ch in ("\x00", "\n", "\r")):
+        raise ValueError(f"invalid path: {raw!r}")
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = (Path.cwd() / path).resolve()
+    else:
+        path = path.resolve()
+    if must_exist and not path.exists():
+        raise FileNotFoundError(f"path not found: {raw}")
+    if is_file and path.exists() and not path.is_file():
+        raise ValueError(f"not a file: {raw}")
+    return path
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=100)
@@ -85,10 +100,12 @@ def write_failure(path: Path, model: dict, preset: str,
     }, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def run_one(out_dir: Path, model: dict, preset: str, args: argparse.Namespace) -> bool:
+def run_one(out_dir: Path, model: dict, preset: str,
+            args: argparse.Namespace, blender_exe: Path) -> bool:
     cmd = [
-        args.blender, "-b", "--factory-startup", "-P", str(FP_BATCH), "--",
-        "--blend", model["path"], "--name", model["name"],
+        str(blender_exe), "-b", "--factory-startup", "-P", str(FP_BATCH), "--",
+        "--blend", str(_validated_path(model["path"], must_exist=True, is_file=True)),
+        "--name", model["name"],
         "--seed", str(args.seed), "--preset", preset,
         "--material", args.material,
         "--supersample", str(args.supersample),
@@ -116,10 +133,12 @@ def run_one(out_dir: Path, model: dict, preset: str, args: argparse.Namespace) -
 
 def main() -> None:
     args = parse_args()
-    if not Path(args.blender).exists():
+    try:
+        blender_exe = _validated_path(args.blender, must_exist=True, is_file=True)
+    except (OSError, ValueError, FileNotFoundError):
         print(f"ERROR: blender not found: {args.blender}")
         sys.exit(1)
-    out_dir = Path(args.out)
+    out_dir = _validated_path(args.out, must_exist=False, is_file=False)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     models = scan_models.scan(args.root, args.limit, out_dir=out_dir)
@@ -146,7 +165,7 @@ def main() -> None:
                   f"({'ok' if prev.get('ok') else 'failed before'})", flush=True)
             continue
         t1 = time.time()
-        ok = run_one(out_dir, model, preset, args)
+        ok = run_one(out_dir, model, preset, args, blender_exe)
         if ok:
             n_ok += 1
         else:
