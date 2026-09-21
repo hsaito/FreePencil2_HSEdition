@@ -131,6 +131,9 @@ def moving_cars(sc):
         src = cars[0]
         c = src.copy()
         sc.collection.objects.link(c)
+        # copy() はアクションを共有する。そのままキーを打つと元の車も同じ
+        # 経路を走り、2台が同じ場所に重なった(実測: 3秒の交差点)
+        c.animation_data_clear()
         c.rotation_euler = (0, 0, math.radians(-90))     # 正面(-y)を -x へ
         for f, x in ((1, 22.0), (int(8 * FPS), -26.0)):
             c.location = (x, -2.6, 0.0)

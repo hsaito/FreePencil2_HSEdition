@@ -459,9 +459,9 @@ def parking(cx, cy, w, d, face, rng, idx):
         t = -along / 2 + k * along / slots
         px, py = wall_point(cx, cy, w, d, face, t, -depth * 0.5)
         if face in ("-x", "+x"):
-            P.box(px, py, 0.01, depth * 0.45, 0.12, 0.02)
+            P.box(px, py, 0.012, depth * 0.45, 0.12, 0.004)
         else:
-            P.box(px, py, 0.01, 0.12, depth * 0.45, 0.02)
+            P.box(px, py, 0.012, 0.12, depth * 0.45, 0.004)
     return P.join()
 
 
@@ -488,24 +488,24 @@ def street(rng):
     y = ylo
     while y < yhi:
         if not any(abs(y - c) < XW + 4 for c in CROSS):
-            S.box(0.0, y + 2.5, 0.015, 0.15, 5.0, 0.03)
+            S.box(0.0, y + 2.5, 0.012, 0.15, 5.0, 0.004)
         y += 10.0
     for sx in (-1, 1):
         for y0, y1 in [(ylo, CROSS[0] - XW - 4), (CROSS[0] + XW + 4, CROSS[1] - XW - 4), (CROSS[1] + XW + 4, yhi)]:
-            S.box(sx * (ROAD - 0.6), (y0 + y1) / 2, 0.015, 0.15, y1 - y0, 0.03)
+            S.box(sx * (ROAD - 0.6), (y0 + y1) / 2, 0.012, 0.15, y1 - y0, 0.004)
     for cy in CROSS:
         for sy in (-1, 1):
             yy = cy + sy * (XW + 1.4)
             for k in range(-4, 5):
-                S.box(k * 1.1, yy, 0.015, 0.5, 2.4, 0.03)
-            S.box(sy * 2.75, cy + sy * (XW + 3.2), 0.015, ROAD, 0.4, 0.03)       # 停止線
+                S.box(k * 1.1, yy, 0.012, 0.5, 2.4, 0.004)
+            S.box(sy * 2.75, cy + sy * (XW + 3.2), 0.012, ROAD, 0.4, 0.004)       # 停止線
         for sx in (-1, 1):
             xx = sx * (ROAD + 1.4)
             for k in range(-3, 4):
-                S.box(xx, cy + k * 1.1, 0.015, 2.4, 0.5, 0.03)
+                S.box(xx, cy + k * 1.1, 0.012, 2.4, 0.5, 0.004)
     # マンホール
     for y in range(int(ylo) + 7, int(yhi), 23):
-        S.cyl(rng.choice((-2.4, 2.4)), y, 0.015, 0.35, 0.03, 16)
+        S.cyl(rng.choice((-2.4, 2.4)), y, 0.012, 0.35, 0.004, 16)
     # 電柱(片側、22m 間隔)と電線、街灯(反対側)
     poles = []
     for y in range(int(ylo) + 6, int(yhi), 22):
@@ -583,7 +583,7 @@ def street(rng):
     for y in range(int(ylo), int(yhi), 2):
         if any(abs(y - c) < XW + 1 for c in CROSS):
             continue
-        S.box(-(ROAD - 0.25), y + 1.0, 0.015, 0.45, 1.9, 0.03)
+        S.box(-(ROAD - 0.25), y + 1.0, 0.012, 0.45, 1.9, 0.004)
     # 遠景: 通りの先(北)に高いビル群、南に低い街並み
     for k in range(9):
         bx = rng.uniform(-70, 70)
