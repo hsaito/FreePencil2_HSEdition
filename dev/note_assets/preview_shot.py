@@ -22,6 +22,9 @@ def arg(n, d=None):
 
 OUT = Path(arg("--out", "preview.png")).resolve()
 WAIT = float(arg("--wait", "20"))
+FULL = "--full" in ARGV          # UI ごと窓全体を撮る(証拠用)。ヘッダやサイドバーを消さない
+CAM = [float(v) for v in arg("--cam", "").split(",") if v]    # x,y,z,rx,ry,rz(度) で見る位置を差し替え
+SHADING = arg("--shading", "RENDERED")
 LOG = OUT.with_suffix(".log")
 LOG.write_text("", encoding="utf-8")
 
@@ -61,13 +64,20 @@ def tick():
             bpy.ops.screen.screen_full_area()
         area = view3d()
         space = area.spaces[0]
-        space.show_region_ui = False
-        space.show_region_header = False
-        space.overlay.show_overlays = False
-        space.show_gizmo = False
-        space.shading.type = "RENDERED"
-        space.shading.use_compositor = "ALWAYS"
-        space.shading.render_pass = "COMBINED"
+        if CAM:
+            import math
+            cam = bpy.context.scene.camera
+            cam.location = CAM[:3]
+            cam.rotation_euler = tuple(math.radians(v) for v in CAM[3:6])
+        if not FULL:
+            space.show_region_ui = False
+            space.show_region_header = False
+            space.overlay.show_overlays = False
+            space.show_gizmo = False
+        space.shading.type = SHADING
+        if SHADING == "RENDERED":
+            space.shading.use_compositor = "ALWAYS"
+            space.shading.render_pass = "COMBINED"
         region = next(r for r in area.regions if r.type == "WINDOW")
         with bpy.context.temp_override(window=win, screen=win.screen, area=area, region=region):
             bpy.ops.view3d.view_camera()
@@ -79,7 +89,10 @@ def tick():
     win = main_window()
     region = next(r for r in area.regions if r.type == "WINDOW")
     with bpy.context.temp_override(window=win, screen=win.screen, area=area, region=region):
-        bpy.ops.screen.screenshot_area(filepath=str(OUT))
+        if FULL:
+            bpy.ops.screen.screenshot(filepath=str(OUT))
+        else:
+            bpy.ops.screen.screenshot_area(filepath=str(OUT))
     log(f"shot {OUT} area {area.width}x{area.height}")
     bpy.ops.wm.quit_blender()
     return None
