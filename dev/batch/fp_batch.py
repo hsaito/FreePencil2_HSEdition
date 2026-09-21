@@ -29,7 +29,6 @@ import importlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -89,11 +88,9 @@ def install_addon() -> None:
             shutil.rmtree(staging, ignore_errors=True)
 
     if not staging.exists():
-        r = subprocess.run(
-            ["cmd", "/c", "mklink", "/J", str(staging), str(REPO)],
-            capture_output=True,
-        )
-        if r.returncode != 0 or not (staging / "__init__.py").exists():
+        try:
+            staging.symlink_to(REPO, target_is_directory=True)
+        except (OSError, NotImplementedError):
             # fallback: one-shot copy (kept for exotic setups)
             staging.mkdir(parents=True, exist_ok=True)
             for item in REPO.iterdir():
