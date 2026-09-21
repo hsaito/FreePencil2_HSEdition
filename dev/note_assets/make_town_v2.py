@@ -453,15 +453,16 @@ def parking(cx, cy, w, d, face, rng, idx):
         b = wall_point(cx, cy, w, d, side, sa / 2, -0.1)
         for z in (0.6, 1.2, 1.75):
             P.bar((a[0], a[1], z), (b[0], b[1], z), 0.02)
-    # 駐車枠の白線
+    # 駐車枠の白線は置かない(路面標示と同じ理由)
+    # 車止め(輪止め)だけ置く
     slots = int(along // 2.6)
-    for k in range(slots + 1):
-        t = -along / 2 + k * along / slots
-        px, py = wall_point(cx, cy, w, d, face, t, -depth * 0.5)
+    for k in range(slots):
+        t = -along / 2 + (k + 0.5) * along / slots
+        px, py = wall_point(cx, cy, w, d, face, t, -depth * 0.85)
         if face in ("-x", "+x"):
-            P.box(px, py, 0.012, depth * 0.45, 0.12, 0.004)
+            P.box(px, py, 0.06, 0.15, 0.6, 0.12)
         else:
-            P.box(px, py, 0.012, 0.12, depth * 0.45, 0.004)
+            P.box(px, py, 0.06, 0.6, 0.15, 0.12)
     return P.join()
 
 
@@ -484,28 +485,8 @@ def street(rng):
             # 角は大通りの歩道と重なる(同じ天面で Z ファイト)ので CURB から
             for x0, x1 in ((-70.0, -CURB), (CURB, 70.0)):
                 S.box((x0 + x1) / 2, cy + sy * (XW + WALK / 2), 0.075, x1 - x0, WALK, 0.15)
-    # 中央線(破線)・外側線・停止線・横断歩道
-    y = ylo
-    while y < yhi:
-        if not any(abs(y - c) < XW + 4 for c in CROSS):
-            S.box(0.0, y + 2.5, 0.012, 0.15, 5.0, 0.004)
-        y += 10.0
-    for sx in (-1, 1):
-        for y0, y1 in [(ylo, CROSS[0] - XW - 4), (CROSS[0] + XW + 4, CROSS[1] - XW - 4), (CROSS[1] + XW + 4, yhi)]:
-            S.box(sx * (ROAD - 0.6), (y0 + y1) / 2, 0.012, 0.15, y1 - y0, 0.004)
-    for cy in CROSS:
-        for sy in (-1, 1):
-            yy = cy + sy * (XW + 1.4)
-            for k in range(-4, 5):
-                S.box(k * 1.1, yy, 0.012, 0.5, 2.4, 0.004)
-            S.box(sy * 2.75, cy + sy * (XW + 3.2), 0.012, ROAD, 0.4, 0.004)       # 停止線
-        for sx in (-1, 1):
-            xx = sx * (ROAD + 1.4)
-            for k in range(-3, 4):
-                S.box(xx, cy + k * 1.1, 0.012, 2.4, 0.5, 0.004)
-    # マンホール
-    for y in range(int(ylo) + 7, int(yhi), 23):
-        S.cyl(rng.choice((-2.4, 2.4)), y, 0.012, 0.35, 0.004, 16)
+    # 路面標示(中央線・横断歩道・停止線・マンホール)は置かない。板の厚みが
+    # 線になって気持ち悪い(実測)。線画では白線が無くても道に見える
     # 電柱(片側、22m 間隔)と電線、街灯(反対側)
     poles = []
     for y in range(int(ylo) + 6, int(yhi), 22):
@@ -575,15 +556,6 @@ def street(rng):
         if k % 2 == 0:
             S.bar((px, py, 9.9), (-(ROAD + 1.0), py + 3.0, 8.4), 0.018)
             S.bar((px, py, 9.6), (-(ROAD + 1.0), py + 3.0, 8.1), 0.018)
-    # 歩道の点字ブロック帯(交差点の手前)と側溝の蓋
-    for cy in CROSS:
-        for sx in (-1, 1):
-            for sy in (-1, 1):
-                S.box(sx * (ROAD + 1.6), cy + sy * (XW + 1.0), 0.175, 2.4, 0.4, 0.03)   # 底が歩道の天面(0.15)に重ならないよう浮かす
-    for y in range(int(ylo), int(yhi), 2):
-        if any(abs(y - c) < XW + 1 for c in CROSS):
-            continue
-        S.box(-(ROAD - 0.25), y + 1.0, 0.012, 0.45, 1.9, 0.004)
     # 遠景: 通りの先(北)に高いビル群、南に低い街並み
     for k in range(9):
         bx = rng.uniform(-70, 70)
