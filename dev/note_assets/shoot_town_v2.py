@@ -4,7 +4,7 @@
                     ゆっくり持ち上がりながら通りの奥を向く
   カット B (8-19s)  4m の高さで通りをドリー。走る車を追い、看板と電線の
                     間を抜ける
-  カット C (19-30s) 屋上からの俯瞰。ゆっくり寄りながら交差点へ下りる
+  カット C (19-30s) 交差点の真ん中で 360 度回る(目の高さ、車がすぐ横を通る)
 
   blender -b --factory-startup --python shoot_town_v2.py -- \
       [--blend out/town_v2/town.blend] [--out out/town_v2/shot] [--frames 720]
@@ -29,6 +29,7 @@ BLEND = Path(arg("--blend", str(HERE / "out" / "town_v2" / "town.blend"))).resol
 OUT = Path(arg("--out", str(HERE / "out" / "town_v2" / "shot"))).resolve()
 FRAMES = int(arg("--frames", "720"))
 ONLY = [int(v) for v in arg("--only-frames", "").split(",") if v]
+START = int(arg("--start", "1"))     # このフレームから撮る(カットの撮り直し用)
 PREVIEW = "--preview" in ARGV        # 低解像度・少サンプルで動きだけ確かめる
 RES = int(arg("--res", "960" if PREVIEW else "1920"))
 SAMPLES = int(arg("--samples", "4" if PREVIEW else "16"))
@@ -80,11 +81,18 @@ def shot_b(s, cam):
 
 
 def shot_c(s, cam):
-    """屋上から俯瞰、寄りながら交差点へ。"""
+    """交差点の真ん中で 360 度回る。
+
+    目の高さ(1.6m)で、通りの先(北)から始めて時計回りに一周。走る車が
+    すぐ横を通り過ぎる。回転は始めと終わりを緩め、少しだけ上がる。
+    """
     e = ease(s)
-    pos = (-34.0 + 25.0 * e, 30.0 + 22.0 * e, 28.0 - 21.0 * e)
-    tgt = (2.0, 64.0 + 2.0 * e, 1.5)
-    cam.data.lens = 40.0 - 10.0 * e
+    cx, cy = 0.0, 64.0
+    yaw = math.radians(360.0 * e)
+    z = 1.6 + 0.8 * e
+    pos = (cx, cy, z)
+    tgt = (cx + 20.0 * math.sin(yaw), cy + 20.0 * math.cos(yaw), z + 0.6 - 0.4 * e)
+    cam.data.lens = 24.0
     look(cam, pos, tgt)
 
 
@@ -166,7 +174,7 @@ def main():
         cam.keyframe_insert("rotation_euler", frame=f + 1)
         cam.data.keyframe_insert("lens", frame=f + 1)
     # カットの境目は補間せず飛ぶ(1フレームで切り替わるので線形でも同じ)
-    sc.frame_start, sc.frame_end = 1, FRAMES
+    sc.frame_start, sc.frame_end = START, FRAMES
     sc.render.filepath = str(OUT / "f")
     sc.render.resolution_x = RES
     sc.render.resolution_y = RES * 9 // 16
