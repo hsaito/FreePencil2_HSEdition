@@ -685,6 +685,9 @@ msgstr "葉を房に(個数)"
 msgid "Fill leaf gaps"
 msgstr "葉の隙間を埋める(px)"
 
+msgid "Fine lines"
+msgstr "細い線(メカの分割)"
+
 msgctxt "*"
 msgid "Line weight from cavities (AO): the outline is thick and lines thin as they enter a crease. Smooth surfaces are split less (14 deg floor, ridge 0.45) and the AO thresholds are measured for this shot"
 msgstr "くぼみ(AO)で線に強弱: 輪郭は太く、くぼみに入る線ほど細い。なめらかな面は細かく割らず(下限14度・稜線0.45)、AO のしきい値をこのカットで測る"

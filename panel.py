@@ -234,6 +234,7 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         row.prop(scene, "fp_lw_far_start", text=t("Far start"))
         row.prop(scene, "fp_lw_far_end", text=t("Far end"))
         far.prop(scene, "fp_gap_fill", text=t("Fill leaf gaps"))
+        far.prop(scene, "fp_fine_lines", text=t("Fine lines"), slider=True)
         sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
                  slider=True)
         # 半径としきい値は無くなった。詰まりは「太らせたら隣とつながるか」

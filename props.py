@@ -39,6 +39,28 @@ def _update_far_relief(self, context):
             fp_core.far_relief_from_scene(ng, scene)
 
 
+def _update_fine_lines(self, context):
+    """細い線のスライダーを、生成済みのコンポジタへ即時反映する。
+
+    STEP3 を押し直さなくても割合を変えられる(塗り分けは STEP0 が 2 枚
+    作ってあるので、変わるのは合成だけ)。
+    """
+    from . import compat, fp_core
+    scene = context.scene
+    tree = compat.get_compositor_tree(scene)
+    if tree is None:
+        return
+    rl = next((n for n in tree.nodes if n.type == "R_LAYERS"), None)
+    comp = next((n for n in tree.nodes if n.type in compat.OUTPUT_NODE_TYPES), None)
+    grp = next((n for n in tree.nodes
+                if n.type == "GROUP" and n.node_tree is not None
+                and n.node_tree.name.startswith(fp_core.NODE_GROUP_PREFIX)
+                and n.label != "FreePencil_fine_line"), None)
+    if rl is None or comp is None or grp is None:
+        return
+    fp_core._apply_fine_lines(tree, scene, rl, grp, comp)
+
+
 def _apply_preview_mode(scene) -> None:
     """プレビューの種類を1か所で反映する。
 
@@ -453,7 +475,8 @@ def register_props():
                 "lay those lines over the drawing at this strength. "
                 "0 = off. Needs STEP0 again (it paints twice)"
             ),
-            default=0.0, min=0.0, max=1.0, step=5, precision=2
+            default=0.0, min=0.0, max=1.0, step=5, precision=2,
+            update=_update_fine_lines
         ),
         "fp_foliage_clumps": IntProperty(
             name="Foliage clumps",
