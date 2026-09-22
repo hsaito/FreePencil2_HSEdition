@@ -16,6 +16,8 @@ from . import utils_nodegroup
 from .utils_nodes import insert_antialiasing_if_needed
 
 AOV_GROUP_NAME = "FreePencil_aov_Group_v1_1_0"
+# 細い線(精密の分割)の AOV を材質へ足すときの目印
+FINE_AOV_LABEL = "FreePencil_fine_aov"
 NODE_GROUP_PREFIX = "FreePencil_v1_1_0_"
 
 # ファイル出力で書き出せるパス。スロット名がそのままファイル名になる。
@@ -606,6 +608,21 @@ def setup_aov(scene: bpy.types.Scene,
                and nd.node_tree.name != AOV_GROUP_NAME:
                 nodes.remove(nd)
 
+        # 細い線の AOV。外部リソースのグループは触らず、材質に
+        # 「色属性 -> AOV 出力」の2ノードだけ足す(既定OFFでは何も足さない)
+        for nd in [n for n in nodes if n.label == FINE_AOV_LABEL]:
+            nodes.remove(nd)
+        if getattr(scene, "fp_fine_lines", 0.0) > 0.0:
+            attr = nodes.new("ShaderNodeVertexColor")
+            attr.label = FINE_AOV_LABEL
+            attr.layer_name = "fine_color"
+            attr.location = (10, 680)
+            aov_out = nodes.new("ShaderNodeOutputAOV")
+            aov_out.label = FINE_AOV_LABEL
+            aov_out.aov_name = "fine_color"
+            aov_out.location = (240, 680)
+            nt.links.new(attr.outputs["Color"], aov_out.inputs["Color"])
+
         if not any(nd.type == "GROUP" and nd.node_tree
                    and nd.node_tree.name == AOV_GROUP_NAME
                    for nd in nodes):
@@ -634,10 +651,78 @@ def setup_aov(scene: bpy.types.Scene,
     ensure_aov("line_color", scene.fp_line_color)
     ensure_aov("mat_color", scene.fp_mat_color)
     ensure_aov("bone_color", scene.fp_bone_color)
+    ensure_aov("fine_color", getattr(scene, "fp_fine_lines", 0.0) > 0.0)
 
     scene.render.film_transparent = True
     scene.view_settings.view_transform = 'Standard'
     return result
+
+
+def _apply_fine_lines(tree, scene, rl, group_node, comp):
+    """fine_color から細い線を作り、最終画像へ薄く乗算する。戻り値はノード数。"""
+    label = "FreePencil_fine_line"
+    for n in [n for n in tree.nodes if n.label == label]:
+        if n.type == "GROUP" and n.node_tree and n.node_tree.users == 1:
+            bpy.data.node_groups.remove(n.node_tree)
+        tree.nodes.remove(n)
+    k = float(getattr(scene, "fp_fine_lines", 0.0))
+    src = next((o for o in rl.outputs if o.name == "fine_color"), None)
+    if k <= 0.0 or src is None or group_node.node_tree is None:
+        return 0
+    if not comp.inputs or not comp.inputs[0].is_linked:
+        return 0
+    made = []
+
+    fine = tree.nodes.new("CompositorNodeGroup")
+    fine.node_tree = group_node.node_tree.copy()
+    fine.node_tree.name = group_node.node_tree.name + "_fine"
+    fine.label = label
+    fine.location = (group_node.location.x, group_node.location.y - 700)
+    made.append(fine)
+    # 塗り分けの口だけ差し替える。他のチャンネル(深度・ボーン・生成・材質)は
+    # つながないので線を出さない = 細い分割の線だけが出る
+    if "mecha_color" in fine.inputs:
+        tree.links.new(src, fine.inputs["mecha_color"])
+    dst_a = group_node.inputs.get("Alpha")
+    if dst_a is not None and dst_a.is_linked and "Alpha" in fine.inputs:
+        tree.links.new(dst_a.links[0].from_socket, fine.inputs["Alpha"])
+    # 絵の入口は白に固定する。"line" 出力はほぼ空で(実測: 最大 0.004)、
+    # 線は "sample"(絵の上に線を乗せた合成)に出る。ビューティを入れると
+    # 陰影まで一緒に乗算されて面が灰色になるので、白を入れて線だけ取る
+    white = tree.nodes.new("CompositorNodeRGB")
+    white.label = label
+    white.hide = True
+    white.location = (fine.location.x - 200, fine.location.y)
+    white.outputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
+    made.append(white)
+    if "Image" in fine.inputs:
+        tree.links.new(white.outputs[0], fine.inputs["Image"])
+
+    # 薄さ: faint = 1 - k * 線。乗算で最終画像へ
+    inv = compat.new_node(tree, "CompositorNodeMixRGB")
+    compat.set_node_value(inv, "blend_type", "MIX")
+    inv.label = label
+    inv.hide = True
+    inv.location = (fine.location.x + 320, fine.location.y)
+    inv.inputs[0].default_value = k
+    inv.inputs[1].default_value = (1.0, 1.0, 1.0, 1.0)
+    tree.links.new(fine.outputs["sample"], inv.inputs[2])
+    made.append(inv)
+
+    mul = compat.new_node(tree, "CompositorNodeMixRGB")
+    compat.set_node_value(mul, "blend_type", "MULTIPLY")
+    mul.label = label
+    mul.hide = True
+    mul.location = (comp.location.x - 160, comp.location.y - 160)
+    mul.inputs[0].default_value = 1.0
+    made.append(mul)
+    lnk = comp.inputs[0].links[0]
+    prev = lnk.from_socket
+    tree.links.remove(lnk)
+    tree.links.new(prev, mul.inputs[1])
+    tree.links.new(inv.outputs[0], mul.inputs[2])
+    tree.links.new(mul.outputs[0], comp.inputs[0])
+    return len(made)
 
 
 def setup_compositor(scene: bpy.types.Scene,
@@ -741,6 +826,11 @@ def setup_compositor(scene: bpy.types.Scene,
     # 50%縮小(スーパーサンプリング)より前に挟む。縮小が最後でないと
     # 太らせた幅と出力の画素数が合わなくなる
     line_weight.apply(scene, view_layer, tree, weight_target)
+
+    # 細い線(精密の分割)を薄く重ねる。同じ検出の仕組みをもう一度通すため、
+    # ノードグループをコピーして fine_color を mecha_color の口へ入れ、出て
+    # きた線を強弱の後ろで乗算する(強弱は太い線だけに掛けたいので後ろ)
+    _apply_fine_lines(tree, scene, rl, group_node, comp)
 
     # ファイル出力: チェックの入ったパスを個別PNGで書き出す
     selected = selected_file_output_passes(scene)

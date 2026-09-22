@@ -642,6 +642,35 @@ def build_palette(k, seed_int, luma_lo=0.25, luma_hi=0.75):
     return colors, pmin, lmin
 
 
+def copy_vertex_color(obj, src_name: str, dst_name: str) -> bool:
+    """色属性をまるごと複製する(細い線の 2 枚塗り用)。
+
+    STEP1 は毎回 mecha_color を塗り直すので、1 回目(精密の分割)の結果を
+    別の名前へ写しておく。戻り値は写したかどうか。
+    """
+    import numpy as np
+
+    me = obj.data
+    cols = getattr(me, "color_attributes", None)
+    if cols is None:
+        return False
+    src = cols.get(src_name)
+    if src is None:
+        return False
+    dst = cols.get(dst_name)
+    if dst is not None and (dst.domain != src.domain or dst.data_type != src.data_type):
+        cols.remove(dst)
+        dst = None
+    if dst is None:
+        dst = cols.new(name=dst_name, type=src.data_type, domain=src.domain)
+    n = len(src.data)
+    buf = np.empty(n * 4, dtype=np.float32)
+    src.data.foreach_get("color", buf)
+    dst.data.foreach_set("color", buf)
+    me.update()
+    return True
+
+
 def apply_face_colors(obj, vcol_index, face_r, face_g, face_b,
                       loop_offset=None):
     vcols = obj.data.vertex_colors if bpy.app.version < (3, 4, 0) else obj.data.color_attributes

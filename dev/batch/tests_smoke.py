@@ -2159,6 +2159,7 @@ def t49():
     assert scene.fp_foliage_clumps == 4, "背景なのに葉の房が入らない"
     assert scene.fp_gap_fill == 6 and abs(scene.fp_lw_ink - 0.75) < 1e-6, "背景の隙間埋め/線の濃さが入らない"
     assert abs(scene.fp_lw_strength - 0.5) < 1e-6, "背景なのに線が細くならない"
+    assert abs(scene.fp_fine_lines - 0.35) < 1e-6, "背景なのに細い線が入らない"
     assert scene.fp_ch_depth == 0.0, "背景なのに深度チャンネルが生きている"
     assert scene.fp_lw_far_end > scene.fp_lw_far_start > 0.0, "奥の距離が測られていない"
     assert any(n.get("fp_tap") == "far" for n in
@@ -2171,7 +2172,8 @@ def t49():
     assert abs(scene.fp_auto_split_floor - 5.0) < 1e-6
     assert (scene.fp_lw_far == 0.0 and scene.fp_foliage_clumps == 0
             and scene.fp_gap_fill == 0 and scene.fp_lw_ink == 1.0
-            and scene.fp_lw_strength == 1.0), "精密に戻しても特殊処理が残る"
+            and scene.fp_lw_strength == 1.0
+            and scene.fp_fine_lines == 0.0), "精密に戻しても特殊処理が残る"
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
@@ -2550,6 +2552,77 @@ def t55():
         assert abs(frac_a - frac_s) < 0.03, (
             f"アニメーションの絵が F12 と違う大きさ: F12 {frac_s:.2f} / アニメ {frac_a:.2f}")
         assert frac_s > 0.4, f"F12 の絵が半分のまま: {frac_s:.2f}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("fine lines: the second (precise) paint adds ink without greying flat faces")
+def t56():
+    # 手描き背景は塗り分けを 2 枚持つ(mecha_color = 手描き、fine_color =
+    # 精密)。fp_fine_lines でその細い線を薄く重ねる。面まで暗くならない
+    # ことが肝心(グループの合成出力をそのまま乗算すると陰影が二重になった)
+    import math
+    import shutil
+    import tempfile
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=48, ring_count=24, radius=1.6)
+    bpy.ops.object.shade_smooth()
+    obj = bpy.context.object
+    scene = bpy.context.scene
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.location = (0, -6, 0)
+    cam.rotation_euler = (math.radians(90), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.fp_use_random_seed = False
+    scene.fp_color_seed = 42
+    scene.fp_enable_compositor_view = False
+    scene.fp_auto_detect_aov = False
+    scene.render.resolution_x = 240
+    scene.render.resolution_y = 180
+    scene.render.film_transparent = True
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    scene.fp_auto_style = 'BACKGROUND'
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    assert "fine_color" in obj.data.color_attributes, "fine_color が塗られていない"
+    assert any(a.name == "fine_color" for a in bpy.context.view_layer.aovs), "fine_color の AOV が無い"
+
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t56_"))
+
+    def shot(k, name):
+        scene.fp_fine_lines = k
+        bpy.ops.freepencil2.link_button()
+        scene.fp_white_preview = True
+        scene.render.film_transparent = True
+        scene.render.filepath = str(tmp / name)
+        bpy.ops.render.render(write_still=True)
+        img = bpy.data.images.load(str(tmp / name))
+        w, h = img.size
+        buf = [0.0] * (w * h * 4)
+        img.pixels.foreach_get(buf)
+        bpy.data.images.remove(img)
+        # 薄い線は 0.5 を割らないので、数ではなく「暗さの合計」で見る
+        ink = 0.0
+        bright = []
+        for i in range(w * h):
+            if buf[i * 4 + 3] <= 0.5:
+                continue
+            g = (buf[i * 4] + buf[i * 4 + 1] + buf[i * 4 + 2]) / 3
+            ink += 1.0 - g
+            if g >= 0.5:
+                bright.append(g)
+        # 面の明るさは「明るい側の 9 割目」で見る。平均だと薄い線そのものが
+        # 引き下げてしまい、面が灰色になったのかを見分けられない
+        bright.sort()
+        return ink, (bright[int(len(bright) * 0.9)] if bright else 1.0)
+
+    try:
+        ink0, face0 = shot(0.0, "k0.png")
+        ink1, face1 = shot(0.6, "k6.png")
+        assert ink1 > ink0 * 1.15, f"細い線が増えていない: 暗さ {ink0:.0f} -> {ink1:.0f}"
+        assert face1 > face0 - 0.02, f"面まで暗くなった: {face0:.3f} -> {face1:.3f}"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         bpy.ops.wm.read_homefile(use_empty=True)

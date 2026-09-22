@@ -125,6 +125,13 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         scene.fp_lw_far_fade = 0.35 if background else 0.0
         # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
         scene.fp_foliage_clumps = 4 if background else 0
+        # 細い線(精密の分割)を薄く重ねる。背景は 0.35
+        scene.fp_fine_lines = 0.35 if background else 0.0
+        # 細い線を使うときは、STEP1 を 2 回塗る。1 回目はここで精密の値に
+        # しておき(この後のモーダルが塗る)、_finish で fine_color へ写して
+        # から手描きの値で塗り直す
+        if background and scene.fp_fine_lines > 0.0:
+            scene.fp_auto_split_floor = 5.0
         # 葉の隙間埋め 6px(200% 基準 = 1080p で 3px)。線の濃さは 0.75。
         # 背景は線を細く(強さ 0.5 = 最大 6px、1080p で 3px)。太いのは
         # 近くに寄ったときだけでよい
@@ -206,6 +213,21 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
     def _finish(self, context, info):
         """STEP1 完了後: STEP2(AOV)/STEP3(PROノード)と後始末。"""
         scene = context.scene
+
+        # 細い線: 1 回目(精密の分割)の結果を fine_color へ写し、手描きの
+        # 値で塗り直す。線の検出はどちらも同じ仕組みなので、塗り分けだけ
+        # 2 枚持てば、合成の割合をスライダーで変えられる
+        if getattr(scene, "fp_fine_lines", 0.0) > 0.0 and scene.fp_line_weight:
+            from . import utils as _utils
+            n = 0
+            for obj in info["targets"]:
+                if _utils.copy_vertex_color(obj, "mecha_color", "fine_color"):
+                    n += 1
+            scene.fp_auto_split_floor = 14.0
+            if scene.fp_auto_merge:
+                scene.fp_ridge_amount = 0.45
+            bpy.ops.freepencil.auto_vertex_color("EXEC_DEFAULT")
+            print(f"[freepencil.auto_setup] 細い線: fine_color を {n} 個に写して塗り直した")
 
         bpy.ops.freepencil4.link_button()
         bpy.ops.freepencil2.link_button()
