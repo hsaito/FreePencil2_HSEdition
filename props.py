@@ -61,6 +61,25 @@ def _update_fine_lines(self, context):
     fp_core._apply_fine_lines(tree, scene, rl, grp, comp)
 
 
+def _update_line_weight_live(self, context):
+    """線の強弱の見た目のつまみ(強さ・濃さ・縁)を、生成済みの STEP3 へ即時反映する。
+
+    太さの段・届く距離・詰まりの判定まで変わるので、値の書き換えでは済まず
+    STEP3 を作り直す(ボタンと同じ処理、0.1〜0.3 秒)。STEP3 がまだ無い
+    シーンでは何もしない(勝手にコンポジタを作らない)。
+    """
+    from . import compat, fp_core
+    scene = context.scene
+    tree = compat.get_compositor_tree(scene)
+    if tree is None or not getattr(scene, "fp_line_weight", False):
+        return
+    if not any(n.type == "GROUP" and n.node_tree is not None
+               and n.node_tree.name.startswith(fp_core.NODE_GROUP_PREFIX)
+               for n in tree.nodes):
+        return
+    fp_core.setup_compositor(scene, context.view_layer)
+
+
 def _apply_preview_mode(scene) -> None:
     """プレビューの種類を1か所で反映する。
 
@@ -307,9 +326,10 @@ def register_props():
             name="Weight strength",
             description=(
                 "Multiplier on the step widths. 1.0 = 12/8/5/3/2 px before "
-                "the 50% shrink"
+                "the 50% shrink. Updates the drawing right away"
             ),
-            default=1.0, min=0.2, max=3.0, step=0.05, precision=2
+            default=1.0, min=0.2, max=3.0, step=0.05, precision=2,
+            update=_update_line_weight_live
         ),
         "fp_lw_density": FloatProperty(
             name="Measured line density",
@@ -395,9 +415,10 @@ def register_props():
             name="Ink darkness",
             description=(
                 "How dark the darkest line is, as seen on screen. 1 = black, "
-                "0.75 = dark grey. Needs STEP3 again"
+                "0.75 = dark grey. Updates the drawing right away"
             ),
-            default=1.0, min=0.2, max=1.0, step=5, precision=2
+            default=1.0, min=0.2, max=1.0, step=5, precision=2,
+            update=_update_line_weight_live
         ),
         "fp_lw_soften": FloatProperty(
             name="Soften edges",
@@ -407,7 +428,8 @@ def register_props():
             ),
             # 1px(1080pで0.5px)では SMAA だけとほぼ同じで、2px で段が消えた
             # (実測: 町のデモ4倍拡大)
-            default=2.0, min=0.0, max=4.0, step=10, precision=1
+            default=2.0, min=0.0, max=4.0, step=10, precision=1,
+            update=_update_line_weight_live
         ),
         "fp_lw_crowd": FloatProperty(
             name="Keep crowded lines thin",

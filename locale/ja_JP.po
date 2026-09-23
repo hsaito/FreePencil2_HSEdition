@@ -957,8 +957,8 @@ msgid "While line weight is on, raise the line-detection threshold by this facto
 msgstr "線の強弱が有効な間は、線を出すしきい値をこの倍率で上げ、少なくきれいな線だけを太くします。1.0 = 変えない"
 
 msgctxt "*"
-msgid "Multiplier on the step widths. 1.0 = 12/8/5/3/2 px before the 50% shrink"
-msgstr "太さの段の幅にかける倍率。1.0 = 50%縮小前で 12/8/5/3/2 px"
+msgid "Multiplier on the step widths. 1.0 = 12/8/5/3/2 px before the 50% shrink. Updates the drawing right away"
+msgstr "太さの段の幅にかける倍率。1.0 = 50%縮小前で 12/8/5/3/2 px。動かすとすぐ絵に反映されます"
 
 msgctxt "*"
 msgid "How dark a pixel must be to count as line before thickening. Lower = faint lines survive"
@@ -1005,8 +1005,8 @@ msgid "Off: open areas (the outline) are thick and lines thin as they enter a cr
 msgstr "オフ: ペン画のように、開いた所(輪郭)が太く、くぼみに入ると細くなります。オン: その逆"
 
 msgctxt "*"
-msgid "How dark the darkest line is, as seen on screen. 1 = black, 0.75 = dark grey. Needs STEP3 again"
-msgstr "一番濃い線の濃さ。1 = 黒、0.75 = 濃いグレー。STEP3 をやり直すと反映されます"
+msgid "How dark the darkest line is, as seen on screen. 1 = black, 0.75 = dark grey. Updates the drawing right away"
+msgstr "一番濃い線の濃さ。1 = 黒、0.75 = 濃いグレー。動かすとすぐ絵に反映されます"
 
 msgctxt "*"
 msgid "Blur the line edges by this many pixels (at 200%) after anti-aliasing, before the 50% downscale. 0 = SMAA only"

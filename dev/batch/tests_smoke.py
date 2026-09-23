@@ -2753,6 +2753,38 @@ def t59():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("line weight strength slider updates the compositor without pressing STEP3")
+def t60():
+    # 強弱の強さ・濃さ・縁は、動かしたら STEP3 を作り直して即反映する。
+    # 太さ(hw の段の幅)がノードの値として変わっていること
+    from freepencil2 import fp_core
+    fresh_scene_with_islands()
+    scene = bpy.context.scene
+    scene.fp_line_weight = True
+    scene.fp_node_type = "pro"
+    bpy.ops.freepencil.auto_vertex_color()
+    fp_core.setup_aov(scene, bpy.context.view_layer)
+    fp_core.setup_compositor(scene, bpy.context.view_layer)
+
+    def hw_span():
+        # 縁の膨張距離は一番太い段で決まる(強さ 1.0 で 6px、0.3 で 2px)
+        tree = fp_batch.comp_tree(scene)
+        soft = next(n for n in tree.nodes if n.get("fp_tap") == "soft")
+        if hasattr(soft, "distance"):
+            return soft.distance
+        return soft.inputs["Size"].default_value      # 5.x はソケット
+
+    before = hw_span()
+    scene.fp_lw_strength = 0.3                  # ボタンは押さない
+    after = hw_span()
+    assert after != before, f"強弱の強さを変えても太さが変わらない: {before} -> {after}"
+    scene.fp_lw_ink = 0.6
+    tree = fp_batch.comp_tree(scene)
+    assert any(n.get("fp_tap") == "ink_dark" for n in tree.nodes), \
+        "線の濃さを変えても濃さのノードが入らない"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

@@ -24,6 +24,7 @@ def arg(n, d=None):
 OUT = Path(arg("--out", ".")).resolve()
 OUT.mkdir(parents=True, exist_ok=True)
 VALUES = [float(v) for v in arg("--values", "0,0.6").split(",")]
+PROP = arg("--prop", "fp_fine_lines")      # 動かすつまみ(生成後にその場で効くもの)
 LOG = OUT / "ui_fine.log"
 LOG.write_text("", encoding="utf-8")
 
@@ -113,7 +114,7 @@ def tick():
             bpy.ops.wm.quit_blender()
             return None
         v = VALUES[state["i"]]
-        bpy.context.scene.fp_fine_lines = v
+        setattr(bpy.context.scene, PROP, v)
         for a_ in win().screen.areas:
             a_.tag_redraw()
         state["shot_at"] = state["t"] + 25   # ビューポートの再描画を待つ(短いと白いまま撮れた)
@@ -122,7 +123,7 @@ def tick():
     if state["t"] >= state["shot_at"]:
         v = VALUES[state["i"]]
         with bpy.context.temp_override(window=win(), screen=win().screen, area=area, region=region):
-            bpy.ops.screen.screenshot(filepath=str(OUT / f"ui_fine_{v:g}.png"))
+            bpy.ops.screen.screenshot(filepath=str(OUT / f"ui_{PROP}_{v:g}.png"))
         log(f"shot {v}")
         state["i"] += 1
         state["shot_at"] = None
