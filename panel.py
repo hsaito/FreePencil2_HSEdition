@@ -70,7 +70,25 @@ class FP_PT_Step0(_FPSub, bpy.types.Panel):
         col = layout.column(align=True)
         col.label(text=t("Recommended settings for this scene"), icon="INFO")
         layout.prop(scene, "fp_auto_style", text=t("Finish"))
-        col = layout.column(align=True)
+        layout.operator(FP_OT_AUTO_SETUP.bl_idname,
+                        text=t("Auto setup (STEP1-3)"), icon="AUTO")
+
+
+class FP_PT_Step0Options(bpy.types.Panel):
+    """STEP0 の詳細。どれも既定のままでよいので閉じておく。"""
+
+    bl_label = "Details"
+    bl_idname = "FREEPENCIL_PT_STEP0_OPTIONS"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "FreePencil"
+    bl_parent_id = "FREEPENCIL_PT_STEP0"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        t = bpy.app.translations.pgettext
+        scene = context.scene
+        col = self.layout.column(align=True)
         col.prop(scene, "fp_auto_sharp", text=t("Auto edge angle"))
         col.prop(scene, "fp_auto_seam", text=t("Seam/material boundaries"))
         col.prop(scene, "fp_auto_merge", text=t("Merge small islands"))
@@ -84,8 +102,6 @@ class FP_PT_Step0(_FPSub, bpy.types.Panel):
         col.prop(scene, "fp_auto_white_preview",
                  text=t("White material preview"))
         col.prop(scene, "fp_auto_file_output", text=t("Enable File Output"))
-        layout.operator(FP_OT_AUTO_SETUP.bl_idname,
-                        text=t("Auto setup (STEP1-3)"), icon="AUTO")
 
 
 class FP_PT_Step1(_FPSub, bpy.types.Panel):
@@ -121,8 +137,10 @@ class FP_PT_Step1(_FPSub, bpy.types.Panel):
         box = layout.box()
         box.label(text=t("Bone options:"), icon="BONE_DATA")
         col = box.column(align=True)
-        col.prop(scene, "fp_bone_grouping_mode", text=t("Bone grouping"))
-        col.prop(scene, "fp_bone_hard_names", text=t("Hard boundary bones"))
+        col.label(text=t("Bone grouping"))
+        col.prop(scene, "fp_bone_grouping_mode", text="")
+        col.label(text=t("Hard boundary bones"))
+        col.prop(scene, "fp_bone_hard_names", text="")
         col.prop(scene, "fp_part_tint", text=t("Part tint (mecha color)"))
 
         # --- 配色シード(再現性) ---
@@ -174,7 +192,8 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         scene = context.scene
 
         col = layout.column(align=True)
-        col.prop(scene, "fp_node_type", text=t("Select Node Type"))
+        col.label(text=t("Select Node Type"))
+        col.prop(scene, "fp_node_type", text="")
         # 4.2 のビューポートコンポジタは AOV を評価しないので、ONにしても
         # プレビューは出ない。触れるままにすると誤解を招くため無効化する
         row = col.row(align=True)
@@ -199,8 +218,9 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         if scene.fp_supersample:
             # 2倍で出ることを先に言っておく。黙っていると「指定と違う
             # 大きさで出る」と受け取られる
-            col.label(text=t("F12 renders at 2x. STEP5 writes the final size"),
-                      icon="INFO")
+            info = col.column(align=True)
+            info.label(text=t("F12 renders at 2x."), icon="INFO")
+            info.label(text=t("STEP5 writes the final size."), icon="BLANK1")
         col.prop(scene, "fp_line_sensitivity", text=t("Line sensitivity"))
 
         # 線の強弱(入り抜き)。くぼみが深いほど太くする
@@ -210,59 +230,17 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         col.prop(scene, "fp_line_weight", text=t("Line weight from cavities"))
         sub = col.column(align=True)
         sub.enabled = scene.fp_line_weight
-        sub.prop(scene, "fp_lw_island_bias", text=t("Split less"),
-                 slider=True)
-        sub.prop(scene, "fp_lw_line_bias", text=t("Weaken the line"),
-                 slider=True)
         sub.prop(scene, "fp_lw_strength", text=t("Weight strength"),
                  slider=True)
-        sub.prop(scene, "fp_lw_ao_dist", text=t("Cavity radius"))
-        sub.prop(scene, "fp_lw_ao_blur", text=t("Cavity smoothing"))
-        sub.prop(scene, "fp_lw_bin", text=t("Weight binarize"), slider=True)
-        sub.prop(scene, "fp_lw_gain", text=t("Weight darkness"), slider=True)
-        sub.prop(scene, "fp_lw_tone", text=t("Weight tone"), slider=True)
         sub.prop(scene, "fp_lw_ink", text=t("Ink darkness"), slider=True)
         sub.prop(scene, "fp_lw_soften", text=t("Soften edges"), slider=True)
-        sub.prop(scene, "fp_lw_deep_thick", text=t("Thick in cavities"))
-        # 奥の扱い(深度パス)。町のように奥へ続くセット向け。距離は
-        # しきい値と一緒に測る
+        sub.prop(scene, "fp_fine_lines", text=t("Fine lines"), slider=True)
+        # 奥の扱い(深度パス)。町のように奥へ続くセット向け
         far = sub.column(align=True)
         far.prop(scene, "fp_lw_far", text=t("Thin far lines"), slider=True)
         far.prop(scene, "fp_lw_far_sens", text=t("Fewer far lines"), slider=True)
         far.prop(scene, "fp_lw_far_fade", text=t("Lighten far lines"), slider=True)
-        row = far.row(align=True)
-        row.prop(scene, "fp_lw_far_start", text=t("Far start"))
-        row.prop(scene, "fp_lw_far_end", text=t("Far end"))
         far.prop(scene, "fp_gap_fill", text=t("Fill leaf gaps"))
-        far.prop(scene, "fp_fine_lines", text=t("Fine lines"), slider=True)
-        sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
-                 slider=True)
-        # 半径としきい値は無くなった。詰まりは「太らせたら隣とつながるか」
-        # を閉じ(膨張→収縮)で直接測るので、つまみは強さだけ
-        # しきい値は絵ごとに15倍ひらくので固定値では配れない。
-        # 1カットに1回測って固定する
-        sub.operator("freepencil.measure_line_weight",
-                     text=t("Measure thresholds (once per cut)"),
-                     icon="DRIVER_DISTANCE")
-        row = sub.row(align=True)
-        for i in range(1, 5):
-            row.prop(scene, f"fp_lw_e{i}", text="")
-        # 「切る細かさ」は STEP1 の焼きに効くので、STEP3 だけでは
-        # 反映されない。ここを間違えると「変えたのに絵が変わらない」
-        # になる
-        sub.label(text=t("Run STEP0 again to apply (STEP3 is not enough)"),
-                  icon="INFO")
-
-        # 遠景で線が黒ベタにつぶれるのを軽減する(0 で無効=画は変わらない)
-        box = layout.box()
-        box.label(text=t("Far crush relief:"), icon="MOD_SMOOTH")
-        col = box.column(align=True)
-        col.prop(scene, "fp_far_relief", text=t("Amount"), slider=True)
-        sub = col.column(align=True)
-        sub.enabled = scene.fp_far_relief > 0.0
-        sub.prop(scene, "fp_far_relief_radius", text=t("Radius (px)"))
-        sub.prop(scene, "fp_far_relief_threshold", text=t("Threshold"),
-                 slider=True)
 
         # チャンネル別の線の強さ(生成済みノードへ即時反映)
         box = layout.box()
@@ -281,7 +259,8 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
 
         sub = col.column(align=True)
         sub.enabled = scene.fp_file_output
-        sub.prop(scene, "fp_file_output_path", text=t("Output path"))
+        sub.label(text=t("Output path"))
+        sub.prop(scene, "fp_file_output_path", text="")
         # 書き出すパスを個別に選ぶ。チェック名がそのままファイル名になる
         sub.label(text=t("Passes to write:"))
         grid = sub.grid_flow(columns=2, align=True)
@@ -298,6 +277,70 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
 
         layout.operator(LINK_MAKE_FP_OT_NODE.bl_idname,
                         text=t("Generate Sample Node"), icon="NODETREE")
+
+
+class FP_PT_Step3Details(bpy.types.Panel):
+    """STEP3 の詳細。STEP0 が決める値と、測った値の確認用。閉じておく。"""
+
+    bl_label = "Details"
+    bl_idname = "FREEPENCIL_PT_STEP3_DETAILS"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "FreePencil"
+    bl_parent_id = "FREEPENCIL_PT_STEP3"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        t = bpy.app.translations.pgettext
+        layout = self.layout
+        scene = context.scene
+
+        box = layout.box()
+        box.label(text=t("Line weight (cavities):"), icon="MOD_THICKNESS")
+        sub = box.column(align=True)
+        sub.enabled = scene.fp_line_weight
+        sub.prop(scene, "fp_lw_ao_dist", text=t("Cavity radius"))
+        sub.prop(scene, "fp_lw_ao_blur", text=t("Cavity smoothing"))
+        sub.prop(scene, "fp_lw_bin", text=t("Weight binarize"), slider=True)
+        sub.prop(scene, "fp_lw_gain", text=t("Weight darkness"), slider=True)
+        sub.prop(scene, "fp_lw_tone", text=t("Weight tone"), slider=True)
+        sub.prop(scene, "fp_lw_deep_thick", text=t("Thick in cavities"))
+        sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
+                 slider=True)
+        sub.prop(scene, "fp_lw_far_start", text=t("Far start"))
+        sub.prop(scene, "fp_lw_far_end", text=t("Far end"))
+        # しきい値は絵ごとに15倍ひらくので固定値では配れない。
+        # 1カットに1回測って固定する(STEP0 も測る)
+        sub.operator("freepencil.measure_line_weight",
+                     text=t("Measure thresholds (once per cut)"),
+                     icon="DRIVER_DISTANCE")
+        row = sub.row(align=True)
+        for i in range(1, 5):
+            row.prop(scene, f"fp_lw_e{i}", text="")
+
+        # 「切る細かさ」は STEP1 の焼きに効くので、STEP3 だけでは
+        # 反映されない。ここを間違えると「変えたのに絵が変わらない」
+        # になる
+        box = layout.box()
+        box.label(text=t("Applied by STEP0 (STEP1):"), icon="INFO")
+        sub = box.column(align=True)
+        sub.enabled = scene.fp_line_weight
+        sub.prop(scene, "fp_lw_island_bias", text=t("Split less"),
+                 slider=True)
+        sub.prop(scene, "fp_lw_line_bias", text=t("Weaken the line"),
+                 slider=True)
+
+        # 遠景で線が黒ベタにつぶれるのを軽減する(0 で無効=画は変わらない)。
+        # 手描き背景の「奥ほど細く/減らす」で足りるので、どのモードも使わない
+        box = layout.box()
+        box.label(text=t("Far crush relief:"), icon="MOD_SMOOTH")
+        col = box.column(align=True)
+        col.prop(scene, "fp_far_relief", text=t("Amount"), slider=True)
+        sub = col.column(align=True)
+        sub.enabled = scene.fp_far_relief > 0.0
+        sub.prop(scene, "fp_far_relief_radius", text=t("Radius (px)"))
+        sub.prop(scene, "fp_far_relief_threshold", text=t("Threshold"),
+                 slider=True)
 
 
 class FP_PT_Cameras(_FPSub, bpy.types.Panel):
@@ -336,7 +379,8 @@ class FP_PT_Step4(_FPSub, bpy.types.Panel):
         layout = self.layout
         scene = context.scene
 
-        layout.prop(scene, "fp_color_type", text=t("Vertex Color Type"))
+        layout.label(text=t("Vertex Color Type"))
+        layout.prop(scene, "fp_color_type", text="")
         layout.operator(LINK_MAKE_FP_OT_VCOLOR.bl_idname,
                         text=t("Paint Vertex Color"), icon="VPAINT_HLT")
 
