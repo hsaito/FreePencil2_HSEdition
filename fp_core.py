@@ -382,7 +382,9 @@ def set_mono_light_preview(scene: bpy.types.Scene, enable: bool,
     lift.label = MONO_LABEL
     lift.location = (x + 150, y)
     lift.hide = True
-    lift.use_clamp = True
+    # クランプ: 4.x の Compositor は use_clamp、5.x の Shader 版は clamp
+    compat.set_node_value(lift, "use_clamp" if hasattr(lift, "use_clamp")
+                          else "clamp", True)
     for name, val in (("From Min", 0.0), ("From Max", 1.0),
                       ("To Min", max(0.0, min(0.9, floor))), ("To Max", 1.0)):
         sock = lift.inputs.get(name)
@@ -897,9 +899,13 @@ def setup_compositor(scene: bpy.types.Scene,
     else:
         scene.render.resolution_percentage = 100
 
-    # 白プレビュー中に STEP3 を再生成した場合は Mix(白) を挿入し直す
+    # プレビュー中に STEP3 を再生成した場合は掛け直す。白だけ戻していて、
+    # モノクロは外れたまま(表示はモノクロなのに材質の色で出た)だった
     if getattr(scene, "fp_white_preview", False):
         set_white_preview(scene, True)
+    elif getattr(scene, "fp_preview_mode", "NONE") == "MONO_LIGHT":
+        set_mono_light_preview(scene, True,
+                               floor=getattr(scene, "fp_mono_floor", 0.25))
 
     # 最後に配置を整える。座標はエクスポート元 .blend の手配置がそのまま
     # 入っており、読めない状態だった(PROノード80個で重なり97組)。

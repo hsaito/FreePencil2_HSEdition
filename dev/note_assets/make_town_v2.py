@@ -821,8 +821,27 @@ def stage():
     return cam, ground
 
 
+def step0_and_save():
+    """STEP0 を掛けて town.blend に保存する(選択は town_pre.blend に入っている)。"""
+    sc = bpy.context.scene
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    say(f"STEP0 done: 距離 {sc.fp_lw_far_start:.1f}..{sc.fp_lw_far_end:.1f} 密度 {sc.fp_lw_density:.3f}"
+        f" 細い線 {sc.fp_fine_lines:.2f} 奥の線減らし {sc.fp_lw_far_sens:.1f}")
+    sc.fp_mono_floor = 0.55
+    sc.fp_preview_mode = 'MONO_LIGHT'
+    sc.fp_enable_compositor_view = True
+    bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "town.blend"))
+    say(f"保存 {OUT / 'town.blend'}")
+
+
 def main():
     fp_batch.install_addon()
+    if "--from-pre" in ARGV:
+        # 町は作り直さず、STEP0 前の町に STEP0 だけ掛け直す(既定値を変えたとき)
+        bpy.ops.wm.open_mainfile(filepath=str(OUT / "town_pre.blend"))
+        bpy.context.scene.fp_auto_style = STYLE
+        step0_and_save()
+        return
     bpy.ops.wm.read_homefile(use_empty=True)
     rng = random.Random(SEED)
     meshes = [o for o in layout(rng) if o is not None]
@@ -851,13 +870,7 @@ def main():
             o.select_set(True)
     bpy.context.view_layer.objects.active = meshes[0]
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "town_pre.blend"))   # STEP0 前(調査用)
-    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
-    say(f"STEP0 done: 距離 {sc.fp_lw_far_start:.1f}..{sc.fp_lw_far_end:.1f} 密度 {sc.fp_lw_density:.3f}")
-    sc.fp_mono_floor = 0.55
-    sc.fp_preview_mode = 'MONO_LIGHT'
-    sc.fp_enable_compositor_view = True
-    bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "town.blend"))
-    say(f"保存 {OUT / 'town.blend'}")
+    step0_and_save()
 
 
 if __name__ == "__main__":

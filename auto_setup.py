@@ -121,12 +121,15 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         scene.fp_line_weight = weighted
         # 奥の扱い(値の根拠は dev/note_assets/eval_far_ideas.py の 24案比較)
         scene.fp_lw_far = 1.0 if background else 0.0
-        scene.fp_lw_far_sens = 3.0 if background else 1.0
+        # 奥の線減らしは 2.0(3.0 だと町の奥のビルの窓が消えすぎた。
+        # dev/note_assets/eval_density_options.py の案 ABC)
+        scene.fp_lw_far_sens = 2.0 if background else 1.0
         scene.fp_lw_far_fade = 0.35 if background else 0.0
         # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
         scene.fp_foliage_clumps = 4 if background else 0
-        # 細い線(精密の分割)を薄く重ねる。背景は 0.35
-        scene.fp_fine_lines = 0.35 if background else 0.0
+        # 細い線(精密の分割)を薄く重ねる。背景は 0.6。線を太くせず本数で
+        # 戻す(0.35 ではアパートの窓枠が精密より明らかに少なかった)
+        scene.fp_fine_lines = 0.6 if background else 0.0
         # 細い線を使うときは、STEP1 を 2 回塗る。1 回目はここで精密の値に
         # しておき(この後のモーダルが塗る)、_finish で fine_color へ写して
         # から手描きの値で塗り直す
@@ -166,6 +169,10 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
             # スザンヌの口の輪郭は 0.45 でないと戻らない(下限14度と役割が別)。
             # 精密(v2.7)は 0.25 のまま
             scene.fp_ridge_amount = 0.45 if weighted else 0.25
+            # 細い線の 1 回目は本当の精密(稜線 0.25)で塗る。_finish で
+            # fine_color へ写したあと 0.45 に戻して塗り直す
+            if background and scene.fp_fine_lines > 0.0:
+                scene.fp_ridge_amount = 0.25
             scene.fp_ridge_radius = 0.08
         if scene.fp_auto_part_tint:
             scene.fp_part_tint = True

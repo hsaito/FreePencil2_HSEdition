@@ -36,6 +36,9 @@ _NODE_TYPE_5X = {
     "CompositorNodeValToRGB": "ShaderNodeValToRGB",
     "CompositorNodeMixRGB": "ShaderNodeMixRGB",
     "CompositorNodeMath": "ShaderNodeMath",
+    # 5.x のコンポジタに Map Range は無く、シェーダー側を使う(実測 5.2)。
+    # クランプはプロパティ名が use_clamp -> clamp に変わる
+    "CompositorNodeMapRange": "ShaderNodeMapRange",
     # Composite は「グループ出力」に置き換わる。ソケット構成が異なるため
     # 呼び出し側で扱いを分ける必要がある(new_output_node を使うこと)
     "CompositorNodeComposite": "NodeGroupOutput",

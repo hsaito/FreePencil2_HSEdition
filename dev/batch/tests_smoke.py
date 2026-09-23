@@ -2154,12 +2154,12 @@ def t49():
             bpy.context.view_layer.objects.active = o
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     assert scene.fp_line_weight and abs(scene.fp_auto_split_floor - 14.0) < 1e-6
-    assert scene.fp_lw_far == 1.0 and scene.fp_lw_far_sens == 3.0 \
+    assert scene.fp_lw_far == 1.0 and scene.fp_lw_far_sens == 2.0 \
         and abs(scene.fp_lw_far_fade - 0.35) < 1e-6, "背景なのに奥の扱いが入らない"
     assert scene.fp_foliage_clumps == 4, "背景なのに葉の房が入らない"
     assert scene.fp_gap_fill == 6 and abs(scene.fp_lw_ink - 0.75) < 1e-6, "背景の隙間埋め/線の濃さが入らない"
     assert abs(scene.fp_lw_strength - 0.5) < 1e-6, "背景なのに線が細くならない"
-    assert abs(scene.fp_fine_lines - 0.35) < 1e-6, "背景なのに細い線が入らない"
+    assert abs(scene.fp_fine_lines - 0.6) < 1e-6, "背景なのに細い線が入らない"
     assert scene.fp_ch_depth == 0.0, "背景なのに深度チャンネルが生きている"
     assert scene.fp_lw_far_end > scene.fp_lw_far_start > 0.0, "奥の距離が測られていない"
     assert any(n.get("fp_tap") == "far" for n in
@@ -2626,6 +2626,37 @@ def t56():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("mono preview survives STEP3 regeneration")
+def t57():
+    # STEP3 を作り直すと白プレビューだけ掛け直していて、モノクロは外れた
+    # (表示はモノクロのまま、絵は材質の色)。グループの Image 入口が
+    # 作り直したあとも陰影ノードから来ていること
+    from freepencil2 import fp_core
+    fresh_scene_with_islands()
+    bpy.ops.freepencil.auto_vertex_color()
+    scene = bpy.context.scene
+    bpy.context.view_layer.use_pass_diffuse_direct = True
+    scene.fp_node_type = "pro"
+    fp_core.setup_aov(scene, bpy.context.view_layer)
+    fp_core.setup_compositor(scene, bpy.context.view_layer)
+    scene.fp_preview_mode = 'MONO_LIGHT'
+
+    def image_source():
+        grp = next(n for n in fp_batch.comp_tree(scene).nodes
+                   if n.type == 'GROUP' and n.node_tree
+                   and n.node_tree.name.startswith(fp_core.NODE_GROUP_PREFIX)
+                   and n.label != "FreePencil_fine_line")
+        sock = grp.inputs["Image"]
+        return sock.links[0].from_node.label if sock.is_linked else None
+
+    assert image_source() == fp_core.MONO_LABEL, image_source()
+    fp_core.setup_compositor(scene, bpy.context.view_layer)
+    assert scene.fp_preview_mode == 'MONO_LIGHT'
+    assert image_source() == fp_core.MONO_LABEL, \
+        f"作り直したらモノクロが外れた: {image_source()}"
+    bpy.ops.wm.read_homefile(use_empty=True)
 
 
 def main():
