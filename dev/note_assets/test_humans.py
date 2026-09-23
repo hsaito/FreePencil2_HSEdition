@@ -117,8 +117,8 @@ def main():
         o.select_set(True)
     bpy.context.view_layer.objects.active = meshes[0]
     sc.fp_auto_style = STYLE
-    if arg("--side") is not None:          # 左右の明るさ: off / limbs / all(試験)
-        sc["fp_side_tone_mode"] = arg("--side")
+    if arg("--bone-smooth") is not None:   # ボーンの色をなじませる回数(試験)
+        sc["fp_bone_smooth"] = int(arg("--bone-smooth"))
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     sc.fp_mono_floor = 0.55
     sc.fp_preview_mode = 'MONO_LIGHT'

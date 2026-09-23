@@ -44,7 +44,7 @@ VCOL_LAYER_BONE = "bone_color"
 # キャラのざっくり塗りで「小さいパーツ」とみなす面積の割合(オブジェクト全体比)
 COARSE_SMALL_PART = 0.02
 # キャラ(ざっくり塗り)でボーンの色を隣の頂点と平均する回数
-BONE_SMOOTH_ITERS = 4
+BONE_SMOOTH_ITERS = 8
 DEFAULT_MATERIAL_NAME = "FreePencil_Material"
 
 # ハッシュ関数
