@@ -2659,6 +2659,59 @@ def t57():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("background: the mech paint (fine_color) keeps box corners on a joined low-poly building")
+def t58():
+    # 箱を12個結合した建物(72面)。切れすぎの上限 0.08 島/面 だと許容は8島で、
+    # 箱12個はそれを超えるので 179度まで上げられ、箱が1色(角に線が出ない)に
+    # なっていた。メカの塗り(細い線用)は抑えないので、各箱の面が分かれること。
+    # 手描きの塗り(mecha_color)は従来どおり抑えてよい
+    import numpy as np
+    bpy.ops.wm.read_homefile(use_empty=True)
+    objs = []
+    for i in range(12):
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=((i % 4) * 1.5, (i // 4) * 1.5, 0))
+        objs.append(bpy.context.object)
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.object.join()
+    bld = bpy.context.object
+    scene = bpy.context.scene
+    import math
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.location = (2.25, -9.0, 5.0)
+    cam.rotation_euler = (math.radians(62), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.render.resolution_x = 240
+    scene.render.resolution_y = 180
+    scene.fp_use_random_seed = False
+    scene.fp_color_seed = 3
+    scene.fp_enable_compositor_view = False
+    scene.fp_auto_detect_aov = False
+    scene.fp_auto_style = 'BACKGROUND'
+    bld.select_set(True)
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    assert "fp_fine_pass" not in scene, "メカの塗りの目印が残った"
+
+    def colors_per_box(name):
+        ca = bld.data.color_attributes[name]
+        buf = np.empty(len(ca.data) * 4, dtype=np.float32)
+        ca.data.foreach_get("color", buf)
+        col = buf.reshape(-1, 4)[:, :3].round(3)
+        per = []
+        for b in range(12):
+            faces = bld.data.polygons[b * 6:(b + 1) * 6]
+            cs = {tuple(col[p.loop_start]) for p in faces}
+            per.append(len(cs))
+        return per
+
+    fine = colors_per_box("fine_color")
+    assert min(fine) >= 3, f"メカの塗りで箱の角が分かれない: {fine}"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

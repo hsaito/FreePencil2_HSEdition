@@ -135,6 +135,11 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         # から手描きの値で塗り直す
         if background and scene.fp_fine_lines > 0.0:
             scene.fp_auto_split_floor = 5.0
+            # 1 回目はメカの塗り。切れすぎの抑え(島/面の上限)を外して
+            # 線を全部出す。_finish で外す
+            scene["fp_fine_pass"] = True
+        elif "fp_fine_pass" in scene:
+            del scene["fp_fine_pass"]
         # 葉の隙間埋め 6px(200% 基準 = 1080p で 3px)。線の濃さは 0.75。
         # 背景は線を細く(強さ 0.5 = 最大 6px、1080p で 3px)。太いのは
         # 近くに寄ったときだけでよい
@@ -233,6 +238,8 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
             scene.fp_auto_split_floor = 14.0
             if scene.fp_auto_merge:
                 scene.fp_ridge_amount = 0.45
+            if "fp_fine_pass" in scene:
+                del scene["fp_fine_pass"]       # 2 回目(手描き)は抑える
             bpy.ops.freepencil.auto_vertex_color("EXEC_DEFAULT")
             print(f"[freepencil.auto_setup] 細い線: fine_color を {n} 個に写して塗り直した")
 
@@ -288,12 +295,22 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
                                title="FreePencil STEP0", icon='CHECKMARK')
         return {'FINISHED'}
 
+    @staticmethod
+    def _clear_fine_pass(context):
+        """メカの塗りの目印を外す(途中で止まっても次の STEP1 に残さない)。"""
+        if "fp_fine_pass" in context.scene:
+            del context.scene["fp_fine_pass"]
+
     def execute(self, context):
         """同期実行(スクリプト/バッチ/ヘッドレス用)。"""
         info = self._prepare(context)
         if info is None:
+            self._clear_fine_pass(context)
             return {'CANCELLED'}
         bpy.ops.freepencil.auto_vertex_color()
+        if not (getattr(context.scene, "fp_fine_lines", 0.0) > 0.0
+                and context.scene.fp_line_weight):
+            self._clear_fine_pass(context)
         return self._finish(context, info)
 
     def invoke(self, context, event):
@@ -303,16 +320,19 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
             return self.execute(context)
         info = self._prepare(context)
         if info is None:
+            self._clear_fine_pass(context)
             return {'CANCELLED'}
         self._info = info
         gen, state = vertex_color.make_vertex_color_gen(context, quiet=True)
         if not self._progress_start(context, gen, state):
+            self._clear_fine_pass(context)
             return state._result  # STEP1 が即失敗 → STEP2/3 は走らせない
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event):
         if event.type == 'ESC':
+            self._clear_fine_pass(context)
             self._progress_cancel(context)
             self.report({'INFO'}, "FreePencil: cancelled")
             return {'CANCELLED'}
@@ -322,8 +342,10 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         if status == 'RUNNING':
             return {'RUNNING_MODAL'}
         if status == 'ERROR':
+            self._clear_fine_pass(context)
             return {'CANCELLED'}
         self._progress_end(context)
         if self._state._result != {'FINISHED'}:
+            self._clear_fine_pass(context)
             return self._state._result
         return self._finish(context, self._info)

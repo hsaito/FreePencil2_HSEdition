@@ -162,6 +162,10 @@ def main():
     n = moving_cars(sc)
     print(f"@@@ 走る車 {n} 台", flush=True)
     if ONLY:
+        if PREVIEW:            # 経路の確認でもプレビューと同じ大きさで撮る
+            sc.render.resolution_x = RES
+            sc.render.resolution_y = RES * 9 // 16
+            sc.eevee.taa_render_samples = SAMPLES
         for f in ONLY:
             aim(cam, f)
             sc.frame_set(f + 1)

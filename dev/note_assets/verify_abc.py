@@ -20,7 +20,7 @@ def arg(n, d=None):
 
 
 HERE = Path(__file__).resolve().parent
-OUT = (HERE / "out" / "verify_abc").resolve()
+OUT = Path(arg("--out", str(HERE / "out" / "verify_abc"))).resolve()
 ONLY = arg("--only", "japan-apartment,jnr-c62,european-maple")
 TAG = arg("--tag", "")
 RES = 800

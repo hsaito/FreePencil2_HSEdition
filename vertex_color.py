@@ -494,11 +494,19 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     # 強弱は線を太らせるので、細かく切れた分だけ絵が
                     # 重くなる。詳細は line_weight.island_ratio
                     from . import line_weight
+                    max_ratio = line_weight.island_ratio(
+                        scene, mesh_islands.MAX_ISLANDS_PER_FACE)
+                    # 手描き背景の1回目(メカの塗り = 細い線用)は抑えない。
+                    # 抑えるのは手描きの塗りの役目で、メカの塗りは線を全部
+                    # 出す。上限 0.08 島/面 は箱を結合した低ポリの建物で
+                    # 「切れすぎ」と誤判定し、179度まで上げて角の線を消した
+                    # (町の家: 137面に箱23個、上限10島)
+                    if scene.get("fp_fine_pass"):
+                        max_ratio = 1.0
                     used_deg, tries, ratio = mesh_islands.resolve_threshold(
                         topo, math.degrees(effective_threshold_rad),
                         seam_boundaries_option, clear_sharps_option,
-                        max_ratio=line_weight.island_ratio(
-                            scene, mesh_islands.MAX_ISLANDS_PER_FACE))
+                        max_ratio=max_ratio)
                     if tries > 1:
                         print(f"[FreePencil] '{obj.name}': island ratio too "
                               f"high, raised to {used_deg:.1f} deg "
