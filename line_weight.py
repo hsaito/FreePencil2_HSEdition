@@ -45,7 +45,7 @@ from . import compat
 #
 # 6/5/4/3/2 では縮小後 3/2/2/2/1 で真ん中の3段が同じ太さになり、段分けを
 # 直しても目のまわりしか変わらなかった(実測)。太い側を伸ばして比を 6倍
-# (縮小後 6/4/2/2/1)にし、濃さの強弱(fp_lw_tone)と合わせて差を出す。
+# (縮小後 6/4/2/2/1)にし、濃さの強弱(WEIGHT_TONE)と合わせて差を出す。
 # スザンヌの耳・カメラのレンズ・車のグリルで詰まりの守りが効くことは
 # 確認済み(dev/note_assets/eval_lw_crowd_check.py)
 LEVELS = (12, 8, 5, 3, 2)
@@ -80,26 +80,16 @@ def effective_sensitivity(scene) -> float:
     sens = float(getattr(scene, "fp_line_sensitivity", 1.0))
     if not getattr(scene, "fp_line_weight", False):
         return sens
-    bias = float(getattr(scene, "fp_lw_line_bias", 1.0))
-    return max(0.05, min(4.0, sens * max(1.0, bias)))
+    return max(0.05, min(4.0, sens))
 
 
-def island_ratio(scene, base: float) -> float:
-    """島を切る細かさの上限。強弱がONのときは粗くする(=線を減らす)。
-
-    v2.7 でメカの線を強く出すために判定を細かくした結果、なめらかな
-    形では切れすぎるようになった。スザンヌの耳のように薄い縁を斜めから
-    見ると、サブサーフの輪が1本ずつ別の島になり、4〜5本の平行線として
-    出る。強弱はそれを太らせるので、まとめて黒い帯になる。
-
-    しきい値の角度を直接上げる案も試したが、18度でも26度でも島が
-    3つまで落ちて目の虹彩の輪まで消えた。角度はモデルごとに効き方が
-    違いすぎる。ここでは「島が何個までなら許すか」を下げて、角度は
-    既存の自動ループに決めさせる。
-    """
-    if not getattr(scene, "fp_line_weight", False):
-        return base
-    return max(0.002, base * float(getattr(scene, "fp_lw_island_bias", 1.0)))
+# 強弱の内部の値。BlenderKit で測って決めた既定で、モードごとにも変えない
+# ので、つまみを出さず定数にした(v2.8 の整理)
+AO_BLUR_PX = 12      # くぼみの画のぼかし(200% 基準の px)。EEVEE の AO の粒を消す
+AO_DIST = 0.6        # くぼみを見る範囲(シーンの大きさに対する割合)
+LINE_BIN = 0.7       # 太らせる前に線とみなす濃さ
+WEIGHT_GAIN = 1.0    # 縮小後に線を濃くする倍率
+WEIGHT_TONE = 0.25   # 細い段ほど薄くする割合(0 = 太さだけ)
 
 
 def edges_from_scene(scene) -> list:
@@ -227,7 +217,7 @@ def blur_from_scene(scene) -> int:
     ぼかしの広さが 8 倍違い、しきい値が合わない。どの倍率でも同じ
     広さになるよう、200% を基準に割る。
     """
-    px = max(0, int(getattr(scene, "fp_lw_ao_blur", 4)))
+    px = AO_BLUR_PX
     pct = max(1, getattr(scene.render, "resolution_percentage", 100))
     return max(0, round(px * pct / 200.0))
 
@@ -350,8 +340,8 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     """
     edges = edges_from_scene(scene)
     levels = levels_from_scene(scene)
-    binv = getattr(scene, "fp_lw_bin", 0.15)
-    gain = getattr(scene, "fp_lw_gain", 1.4)
+    binv = LINE_BIN
+    gain = WEIGHT_GAIN
 
     inv = tree.nodes.new("CompositorNodeInvert")
     inv.location = (x0, y0)
@@ -458,10 +448,9 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     # どちらを太くするか。線画の常識は「輪郭が太く、内側の線が細い」で、
     # くぼみに入る所で細くなるのが入り抜き。深い所を太くすると目や眉が
     # 太く輪郭が細くなり、逆に見えた(実測、指摘あり)。既定は開いた所を太く
-    if not getattr(scene, "fp_lw_deep_thick", False):
-        flip = _math(tree, "SUBTRACT", x0 + 640, y0 - 460, a=1.0)
-        tree.links.new(s_div.outputs[0], flip.inputs[1])
-        depth01 = flip
+    flip = _math(tree, "SUBTRACT", x0 + 640, y0 - 460, a=1.0)
+    tree.links.new(s_div.outputs[0], flip.inputs[1])
+    depth01 = flip
 
     # 望む広がり hw = hw_min + (hw_max - hw_min) * s。Feather は芯で 1、
     # reach 離れると 0 に直線で落ちるので、しきい値 T = 1 - hw / reach で
@@ -635,7 +624,7 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
     # した線は表示では 0.5 になる(実測: 全画素が 0.5 以下に落ちた)。
     # 表示の濃さ shown を決めて、リニアの倍率 1 - (1-shown)^2.2 にする。
     #   shown = 1 - 0.6*tone*(1-s)
-    tone = max(0.0, min(1.0, float(getattr(scene, "fp_lw_tone", 0.0))))
+    tone = WEIGHT_TONE
     if tone > 0.0:
         one_minus = _math(tree, "SUBTRACT", x0 + 1120, y0 - 560, a=1.0)
         tree.links.new(depth01.outputs[0], one_minus.inputs[1])
@@ -741,7 +730,7 @@ def ensure_ao_pass(scene, view_layer):
     """
     view_layer.use_pass_ambient_occlusion = True
     ee = scene.eevee
-    r = getattr(scene, "fp_lw_ao_dist", 0.6) * scene_radius(scene)
+    r = AO_DIST * scene_radius(scene)
     if hasattr(ee, "use_gtao"):
         ee.use_gtao = True
     # 4.5 は gtao_distance、5.x は fast_gi_distance。名前が変わった
@@ -1117,7 +1106,7 @@ def measure_edges(scene, view_layer, percent=100):
         return None
     ink = 1.0 - ln
     sil = al > 0.5
-    on = (ink > getattr(scene, "fp_lw_bin", 0.15)) & sil
+    on = (ink > LINE_BIN) & sil
     if int(on.sum()) < 200:
         return None
     # 線の密度(シルエットに占める線の割合)。密なモデルほど太らせる余地が

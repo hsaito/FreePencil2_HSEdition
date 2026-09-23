@@ -45,7 +45,9 @@ def models():
              if any(p in Path(m["path"]).stem for p in ONLY.split(","))]
     for m in found:
         name = Path(m["path"]).stem[:16]
-        for style, key in (('PRECISE', "precise"), ('BACKGROUND', "abc")):
+        keys = {'PRECISE': "precise", 'WEIGHTED': "char", 'BACKGROUND': "abc"}
+        for style in arg("--styles", "PRECISE,BACKGROUND").split(","):
+            key = keys[style]
             meshes, _ = dm.load(m["path"])
             dm.grey(meshes)
             esa.stage(meshes)

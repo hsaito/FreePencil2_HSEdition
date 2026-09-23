@@ -219,51 +219,6 @@ def register_props():
             step=0.005,
             precision=3
         ),
-        "fp_curve_blur_auto": BoolProperty(
-            name="Auto blur on subdivided objects",
-            description=(
-                "For objects that carry a Subdivision modifier, cut islands "
-                "at a low angle and then dissolve every boundary that is not "
-                "a sharp edge. The modelling cage stops showing up as lines "
-                "while the real creases stay"
-            ),
-            # 既定OFF。sample.blend で「ぼかし無し」と並べて比べたところ、
-            # ぼかした方が悪かった。5度で切ると極小の島が大量にでき、少ない
-            # 回数では中途半端にしか混ざらない。溶けきらない色差が破片として
-            # 残り、眉と鼻のまわりにギザギザが出る。回数を増やすと今度は
-            # 領域全体が一色に潰れる。どちらにも良い点が無い。
-            #
-            # 「4回で良くなった」と一度判断したが、比較対象が
-            # 「5度で切っただけ(切りすぎ)」であって通常動作ではなかった。
-            default=False
-        ),
-        "fp_curve_blur": IntProperty(
-            name="Curve blur",
-            description=(
-                "Smooth the paint color across low-angle edges so the mesh "
-                "grid on subdivided surfaces stops turning into lines. "
-                "Sharp edges keep their hard step (0 = off)"
-            ),
-            # 既定OFF。サブサーフのかかった曲面ではメッシュの格子が
-            # そのまま線になるが、島をまとめて消すと目や口の稜線まで
-            # 消える(実測: スザンヌで内部の線が全滅)。島は残したまま
-            # なめらかな境界の段差だけを溶かす
-            default=0,
-            min=0,
-            max=20
-        ),
-        "fp_curve_blur_angle": FloatProperty(
-            name="Curve blur angle",
-            description=(
-                "Only edges below this dihedral angle get smoothed. "
-                "Edges above it keep a hard color step, so their lines stay"
-            ),
-            default=25.0,
-            min=1.0,
-            max=90.0,
-            step=100,
-            precision=1
-        ),
         "fp_color_type": EnumProperty(
             name="Vertex color type",
             description="Select vertex color type.",
@@ -348,52 +303,6 @@ def register_props():
             # までノードは組まれないが、線の量はその場で変わる
             update=_update_line_tuning
         ),
-        "fp_lw_island_bias": FloatProperty(
-            name="Split less",
-            description=(
-                "While line weight is on, allow fewer islands so the mesh "
-                "is cut more coarsely. A thin rim seen edge-on stops "
-                "turning every mesh ring into its own line. "
-                "1.0 = do not change it"
-            ),
-            # 既定 1.0(=何もしない)。
-            #
-            # はじめ 0.4 を既定にしたが、それは線の感度 0.25 で測った
-            # 判断だった。v2.7 の既定である感度 0.5 で測り直すと、
-            # 0.4 ではスザンヌの口の輪郭が消える。感度0.5での実測:
-            #   島1.0  自動10.7度  口○  耳×(平行4本)
-            #   島0.7  自動12.2度  口×  耳×(まだ平行3本)
-            #   島0.6  自動12.4度  口×  耳×
-            #   島0.5  自動13.3度  口×  耳×
-            #   島0.4  自動14.0度  口×  耳○
-            # 感度0.5では「口を残したまま耳を綺麗にする」値が無い。
-            # 顔の部位が消えるほうが害が大きいので、既定は無効にして
-            # 使う人が選べるようにする。感度を 0.25 まで下げるなら
-            # 0.4 で両立する(実測済み)
-            default=1.0, min=0.05, max=1.0, step=0.05, precision=2
-        ),
-        "fp_lw_line_bias": FloatProperty(
-            name="Weaken the line",
-            description=(
-                "While line weight is on, raise the line-detection "
-                "threshold by this factor so fewer, cleaner lines are "
-                "thickened. 1.0 = do not change it"
-            ),
-            # 既定1.2。はじめ1.8にしたが、「切る細かさ」と重なって効きすぎ、
-            # スザンヌの口の輪郭が消えた。両方を切り分けて実測した結果:
-            #   島1.0 線1.0  口○ 耳×(平行4本)
-            #   島0.4 線1.0  口○ 耳○
-            #   島0.4 線1.2  口○ 耳○   <- これ
-            #   島0.4 線1.4  口が欠け始める
-            #   島0.4 線1.8  口が消える
-            # メカ側は 1.8 のほうが綺麗になる(車 7.85% -> 7.38%)ので、
-            # メカ中心のカットでは手で上げる
-            # 1.2 -> 1.0。感度を弱めると検出の境目にある薄い線がとびとびになり、
-            # 点線に見えた(実測: テレビのベゼル内側の線)。線の量は精密と
-            # 同じにして、強弱は太さと濃さだけで付ける
-            default=1.0, min=1.0, max=4.0, step=0.1, precision=2,
-            update=_update_line_tuning
-        ),
         "fp_lw_strength": FloatProperty(
             name="Weight strength",
             description=(
@@ -401,20 +310,6 @@ def register_props():
                 "the 50% shrink"
             ),
             default=1.0, min=0.2, max=3.0, step=0.05, precision=2
-        ),
-        "fp_lw_bin": FloatProperty(
-            name="Weight binarize",
-            description=(
-                "How dark a pixel must be to count as line before "
-                "thickening. Lower = faint lines survive"
-            ),
-            # 0.15 だと、細い線が密集して灰色に見える所が全部芯になって
-            # 塗り潰れた(帆船・機関車)。0.5 でも、薄い線(山が 0.5 前後)の
-            # 芯がとびとびになり、その点が隣の濃い線の濃さで黒く塗られて
-            # 点線に見えた(テレビのベゼル内側)。0.7 で「中心が黒い線」
-            # だけを芯にする。芯から外れた薄い線は元の線を重ねて残すので
-            # 消えない(以前 0.25 で点線になったのは足し戻しが無かった頃)
-            default=0.7, min=0.02, max=0.9, step=0.01, precision=2
         ),
         "fp_lw_density": FloatProperty(
             name="Measured line density",
@@ -496,14 +391,6 @@ def register_props():
             ),
             default=0, min=0, max=32
         ),
-        "fp_lw_deep_thick": BoolProperty(
-            name="Thick in cavities",
-            description=(
-                "Off: open areas (the outline) are thick and lines thin as "
-                "they enter a crease, like a pen drawing. On: the reverse"
-            ),
-            default=False
-        ),
         "fp_lw_ink": FloatProperty(
             name="Ink darkness",
             description=(
@@ -522,29 +409,6 @@ def register_props():
             # (実測: 町のデモ4倍拡大)
             default=2.0, min=0.0, max=4.0, step=10, precision=1
         ),
-        "fp_lw_tone": FloatProperty(
-            name="Weight tone",
-            description=(
-                "Also vary darkness by step: the thinnest step fades to "
-                "grey while the thickest stays black. 0 = width only"
-            ),
-            # 太さは整数画素で頭打ち(line_weight.build_weight に実測)。
-            # 0.5 だと輪郭が灰色になって汚く見えた。0.25 は見てほぼ黒のまま
-            # 少しだけ軽くなる。他の強弱のつまみと同じく反映は STEP3
-            default=0.25, min=0.0, max=1.0, step=0.05, precision=2
-        ),
-        "fp_lw_gain": FloatProperty(
-            name="Weight darkness",
-            description=(
-                "Lift the ink after the 50% shrink so the thin steps stay "
-                "black"
-            ),
-            # 1.4 -> 1.0。薄い線の芯はしきい値をまたいでとびとびになり、
-            # そこだけ持ち上げると点線に見えた(実測: テレビのベゼルの
-            # 内側の線)。元の線は MAX で足し戻すので、持ち上げなくても
-            # 消えない。強い線は元から 1.0 なので gain は要らない
-            default=1.0, min=1.0, max=3.0, step=0.05, precision=2
-        ),
         "fp_lw_crowd": FloatProperty(
             name="Keep crowded lines thin",
             description=(
@@ -557,51 +421,6 @@ def register_props():
             # 素の線より悪くなった。抑制すると潰れが解け、詰まって
             # いない場所(キャラの輪郭など)は1画素も変わらない
             default=1.0, min=0.0, max=1.0, step=0.05, precision=2
-        ),
-        "fp_lw_crowd_radius": IntProperty(
-            name="Crowding radius",
-            description=(
-                "How far to look when deciding that lines are packed, in "
-                "pixels of the render (before the 50% shrink)"
-            ),
-            default=10, min=1, max=40
-        ),
-        "fp_lw_crowd_threshold": FloatProperty(
-            name="Crowding threshold",
-            description=(
-                "How packed an area must be before it stops being "
-                "thickened. Lower = starts working on sparser lines"
-            ),
-            default=0.12, min=0.02, max=0.95, step=0.05, precision=2
-        ),
-        "fp_lw_ao_blur": IntProperty(
-            name="Cavity smoothing",
-            description=(
-                "Blur the cavity map before it drives the width. "
-                "EEVEE's AO is ray-traced and grainy; the grain turns a "
-                "single stroke into a dashed line. Larger = smoother "
-                "taper along a stroke"
-            ),
-            # 4 -> 12 (2026-09-14)。太さは深さに連続に追従するので、深さを
-            # 線に沿ってならすと入り抜きがなめらかになる。4/12/24 を出荷
-            # どおりの経路で比べ、12 は眉の端がなめらかに細り、カメラの
-            # レンズと車も締まって見えた。24 は眉全体が太くなって差が消える
-            default=12, min=0, max=48
-        ),
-        "fp_lw_ao_dist": FloatProperty(
-            name="Cavity radius",
-            description=(
-                "How far to look when deciding how recessed a point is, "
-                "as a fraction of the scene size. Not in scene units: an "
-                "absolute value stops working as soon as the model is "
-                "bigger or smaller"
-            ),
-            # シーン単位の絶対値にしていたら、大きいモデルで効かなかった。
-            # 実測(既定0.6のまま、段の境目の幅):
-            #   スザンヌ等倍(半径1.82)  0.031  効く
-            #   10倍(半径18.2)          0.0039 ほぼ効かない
-            #   0.1倍(半径0.18)         0.051  効く
-            default=0.6, min=0.01, max=4.0, step=0.05, precision=3
         ),
         # 段の境目。d = 1 - AO の分位点。モデルごとに15倍ひらくので
         # 「しきい値を測る」ボタンでカットごとに入れ直す
@@ -929,17 +748,14 @@ def unregister_props():
         "fp_seam_boundaries",
         "fp_min_island_area_pct", "fp_sharp_clear",
         "fp_ridge_amount", "fp_ridge_radius",
-        "fp_curve_blur", "fp_curve_blur_angle", "fp_curve_blur_auto",
         "fp_color_type", "fp_mat_count",
         "fp_gen_color", "fp_mask_color", "fp_line_color",
         "fp_mat_color", "fp_bone_color", "fp_enable_compositor_view",
         "fp_include_antialiasing", "fp_line_sensitivity",
-        "fp_line_weight", "fp_lw_island_bias", "fp_lw_line_bias", "fp_lw_strength", "fp_lw_bin", "fp_lw_gain", "fp_lw_tone", "fp_lw_deep_thick", "fp_lw_density",
-        "fp_lw_ao_dist", "fp_lw_ao_blur", "fp_lw_crowd",
+        "fp_line_weight", "fp_lw_strength", "fp_lw_density", "fp_lw_crowd",
         "fp_lw_far", "fp_lw_far_sens", "fp_lw_far_fade", "fp_lw_far_start", "fp_lw_far_end",
         "fp_foliage_clumps", "fp_gap_fill", "fp_lw_ink", "fp_lw_soften",
-        "fp_fine_lines",
-        "fp_lw_crowd_radius", "fp_lw_crowd_threshold", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
+        "fp_fine_lines", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",
         "fp_ch_mecha", "fp_ch_depth", "fp_ch_bone", "fp_ch_gen", "fp_ch_mat",
         "fp_file_output", "fp_file_output_path",

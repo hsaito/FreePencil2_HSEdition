@@ -414,55 +414,6 @@ class MeshTopology:
         self._island_of_face = None
 
     # ------------------------------------------------------------------
-    def smooth_face_colors(self, cols: np.ndarray, iterations: int,
-                           angle_rad: float = None,
-                           barrier: np.ndarray = None) -> np.ndarray:
-        """頂点カラーをぼかす。線を出したくない辺の段差を消すために使う。
-
-        線の検出は色の段差(Sobel)なので、段差を溶かせばその境界の線は消え、
-        段差が残る所には線が残る。どの辺をまたいで平均するかで用途が変わる。
-
-        barrier を渡した場合: **barrier の辺だけ**を残し、他は全部ぼかす。
-        サブディビジョンがかかったモデル用。ケージの角は二面角が大きくても
-        レンダリングでは丸くなるので、そこに線が出てはいけない。角度で
-        「鋭角」と判定された辺こそが誤判定なので、残してはいけない。
-        残すべきなのは作者が明示した辺(クリース/シャープ)だけ。
-
-        angle_rad を渡した場合: 二面角がそれ未満の辺だけをまたいで平均する。
-        いわゆるエッジ保持スムージング。
-
-        注意: これは拡散なので、何度もまわすとつながっている領域全体が
-        一つの平均色へ収束する。境界だけがぼけるのではない。回数は
-        「線が消える最小限」に留めること(実測: 20回で頭部が灰色一色になった)。
-
-        cols は (面数, 3) の float32。戻り値も同じ形。
-        """
-        if iterations <= 0 or self.n_faces == 0:
-            return cols
-        ok = self.two_face & ~np.isnan(self.angle)
-        if barrier is not None:
-            soft = ok & ~barrier
-        else:
-            soft = ok & (self.angle < angle_rad)
-        a = self.face_a[soft].astype(np.intp)
-        b = self.face_b[soft].astype(np.intp)
-        if not len(a):
-            return cols
-        out = cols.astype(np.float32, copy=True)
-        # 自分自身の重みを1にして、なめらかな辺でつながる隣を足していく。
-        # 重みが辺の本数で決まるので、面の粗密によらず同じ効き方になる
-        deg = np.zeros(self.n_faces, dtype=np.float32)
-        np.add.at(deg, a, 1.0)
-        np.add.at(deg, b, 1.0)
-        denom = (deg + 1.0)[:, None]
-        for _ in range(int(iterations)):
-            acc = out.copy()
-            np.add.at(acc, a, out[b])
-            np.add.at(acc, b, out[a])
-            out = acc / denom
-        return out
-
-    # ------------------------------------------------------------------
     def angle_samples_deg(self) -> list:
         """自動しきい値の判定に使う二面角(度)。面が2枚ある辺のぶんだけ。"""
         if not len(self.angle):

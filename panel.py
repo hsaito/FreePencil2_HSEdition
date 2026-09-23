@@ -241,6 +241,13 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         far.prop(scene, "fp_lw_far_sens", text=t("Fewer far lines"), slider=True)
         far.prop(scene, "fp_lw_far_fade", text=t("Lighten far lines"), slider=True)
         far.prop(scene, "fp_gap_fill", text=t("Fill leaf gaps"))
+        sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
+                 slider=True)
+        # しきい値は絵ごとに15倍ひらくので固定値では配れない。STEP0 が
+        # 1回測る。カメラを変えたときだけ押し直す
+        sub.operator("freepencil.measure_line_weight",
+                     text=t("Measure thresholds (once per cut)"),
+                     icon="DRIVER_DISTANCE")
 
         # チャンネル別の線の強さ(生成済みノードへ即時反映)
         box = layout.box()
@@ -277,70 +284,6 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
 
         layout.operator(LINK_MAKE_FP_OT_NODE.bl_idname,
                         text=t("Generate Sample Node"), icon="NODETREE")
-
-
-class FP_PT_Step3Details(bpy.types.Panel):
-    """STEP3 の詳細。STEP0 が決める値と、測った値の確認用。閉じておく。"""
-
-    bl_label = "Details"
-    bl_idname = "FREEPENCIL_PT_STEP3_DETAILS"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "FreePencil"
-    bl_parent_id = "FREEPENCIL_PT_STEP3"
-    bl_options = {"DEFAULT_CLOSED"}
-
-    def draw(self, context):
-        t = bpy.app.translations.pgettext
-        layout = self.layout
-        scene = context.scene
-
-        box = layout.box()
-        box.label(text=t("Line weight (cavities):"), icon="MOD_THICKNESS")
-        sub = box.column(align=True)
-        sub.enabled = scene.fp_line_weight
-        sub.prop(scene, "fp_lw_ao_dist", text=t("Cavity radius"))
-        sub.prop(scene, "fp_lw_ao_blur", text=t("Cavity smoothing"))
-        sub.prop(scene, "fp_lw_bin", text=t("Weight binarize"), slider=True)
-        sub.prop(scene, "fp_lw_gain", text=t("Weight darkness"), slider=True)
-        sub.prop(scene, "fp_lw_tone", text=t("Weight tone"), slider=True)
-        sub.prop(scene, "fp_lw_deep_thick", text=t("Thick in cavities"))
-        sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
-                 slider=True)
-        sub.prop(scene, "fp_lw_far_start", text=t("Far start"))
-        sub.prop(scene, "fp_lw_far_end", text=t("Far end"))
-        # しきい値は絵ごとに15倍ひらくので固定値では配れない。
-        # 1カットに1回測って固定する(STEP0 も測る)
-        sub.operator("freepencil.measure_line_weight",
-                     text=t("Measure thresholds (once per cut)"),
-                     icon="DRIVER_DISTANCE")
-        row = sub.row(align=True)
-        for i in range(1, 5):
-            row.prop(scene, f"fp_lw_e{i}", text="")
-
-        # 「切る細かさ」は STEP1 の焼きに効くので、STEP3 だけでは
-        # 反映されない。ここを間違えると「変えたのに絵が変わらない」
-        # になる
-        box = layout.box()
-        box.label(text=t("Applied by STEP0 (STEP1):"), icon="INFO")
-        sub = box.column(align=True)
-        sub.enabled = scene.fp_line_weight
-        sub.prop(scene, "fp_lw_island_bias", text=t("Split less"),
-                 slider=True)
-        sub.prop(scene, "fp_lw_line_bias", text=t("Weaken the line"),
-                 slider=True)
-
-        # 遠景で線が黒ベタにつぶれるのを軽減する(0 で無効=画は変わらない)。
-        # 手描き背景の「奥ほど細く/減らす」で足りるので、どのモードも使わない
-        box = layout.box()
-        box.label(text=t("Far crush relief:"), icon="MOD_SMOOTH")
-        col = box.column(align=True)
-        col.prop(scene, "fp_far_relief", text=t("Amount"), slider=True)
-        sub = col.column(align=True)
-        sub.enabled = scene.fp_far_relief > 0.0
-        sub.prop(scene, "fp_far_relief_radius", text=t("Radius (px)"))
-        sub.prop(scene, "fp_far_relief_threshold", text=t("Threshold"),
-                 slider=True)
 
 
 class FP_PT_Cameras(_FPSub, bpy.types.Panel):

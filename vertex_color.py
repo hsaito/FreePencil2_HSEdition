@@ -20,22 +20,6 @@ from . import utils
 # パーツ・トーン分けのときに、もう少し取れる余地を残すための上限
 PALETTE_SIZE = 16
 
-# サブディビジョンが生きているオブジェクトの扱い。
-#
-# STEP1 が見ているのは、なめらかな形を作るための粗いケージ。ケージの角は
-# 二面角が大きくてもレンダリングでは丸くなるので、そこに線が出てはいけない。
-# 角度を一発で当てにいく方式は面の細かさで分位点が動くため破綻する
-# (プリミティブ8種の実測で、サブディブ適用済みは全部45度未満に落ちた)。
-#
-# そこで低い角度で切って構造を取りこぼさないようにしたうえで、
-# **ケージ由来の鋭角をぼかす**。クリースの付いた辺だけは作者が
-# 「丸めない」と指定したものなので、ぼかさずに残す。
-CURVE_CUT_DEG = 5.0        # 構造を取りこぼさない低い角度
-# ぼかす回数。拡散なので回しすぎると領域全体が一色に潰れる(実測: 20回で
-# 頭部が灰色一色になった)。sample.blend で1〜6回を撮って比べ、
-# 4回でケージの格子が消えて造形だけが残った。6回も同じ絵だったので、
-# ここで頭打ちになる
-CURVE_BLUR_ITERS = 4
 
 logger = logging.getLogger(__name__)
 
@@ -311,9 +295,6 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
         max_color_generation_retries = getattr(scene, "fp_max_color_retries", 30)
         ridge_amount = getattr(scene, "fp_ridge_amount", 0.0)
         ridge_radius = getattr(scene, "fp_ridge_radius", 0.08)
-        curve_blur = getattr(scene, "fp_curve_blur", 0)
-        curve_blur_deg = getattr(scene, "fp_curve_blur_angle", 25.0)
-        curve_blur_auto = getattr(scene, "fp_curve_blur_auto", True)
         angle_threshold_rad = math.radians(scene.fp_sharp_edges)
         clear_sharps_option = scene.fp_sharp_clear # UIの「シャープを削除」オプション
         # UVシーム/マテリアル境界を島境界として使う(アーティストの意図情報)
@@ -447,7 +428,6 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # で補間されてから描かれる
                 has_subsurf = any(m.type == 'SUBSURF' and m.show_viewport
                                   for m in obj.modifiers)
-                obj_blur = curve_blur
                 if getattr(scene, "fp_sharp_auto", False):
                     angle_samples = topo.angle_samples_deg()
                     # リグ付きモデルは bone_color が線の主役なので保守的に
@@ -457,28 +437,10 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                         angle_samples, has_armature=has_arm,
                         many_parts=many_loose_parts, has_subsurf=has_subsurf,
                         split_floor=getattr(scene, "fp_auto_split_floor", None))
-                    # サブディビジョン付きは「低い角度で切ってから、鋭角以外を
-                    # 溶かす」方式に切り替える。
-                    #
-                    # 角度を一発で当てにいく方式は面の細かさで分位点が動くため
-                    # 破綻する(プリミティブ8種で、適用済みは全部45度未満に
-                    # 落ちた)。低く切れば構造を取りこぼさず、溶かせばケージの
-                    # 格子は消える。残るのは鋭角だけ。
-                    #
-                    # 実測(sample.blend): 自動60度だとスザンヌは輪郭と目だけ。
-                    # この方式だと眉・鼻・口・耳と頭部の面の切り替わりが出た。
-                    # ぼかさない素のメッシュに使うとポリゴンの角が残るので、
-                    # サブディビジョンがある側だけに限る。
-                    if has_subsurf and curve_blur_auto:
-                        auto_deg = CURVE_CUT_DEG
-                        obj_blur = (curve_blur if curve_blur > 0
-                                    else CURVE_BLUR_ITERS)
                     effective_threshold_rad = math.radians(auto_deg)
                     print(f"[FreePencil] auto sharp threshold for '{obj.name}': "
                           f"{auto_deg:.1f} deg"
-                          + (f", merge {auto_merge_pct}%" if auto_merge_pct else "")
-                          + (f", subsurf -> blur {obj_blur}" if obj_blur
-                             and has_subsurf else ""))
+                          + (f", merge {auto_merge_pct}%" if auto_merge_pct else ""))
 
                 # --- 1. 島境界エッジの判定 ---
                 # メッシュには書き込まない。以前は edge.smooth を書き換えて
@@ -490,12 +452,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     # 自動のときは切った結果を見て閾値を詰める。
                     # 分布から系統を当てる方式だけでは、実測で 39モデル中
                     # 9モデルが網目状に砕けていた
-                    # 線の強弱がONのときは、切る細かさの上限を下げる。
-                    # 強弱は線を太らせるので、細かく切れた分だけ絵が
-                    # 重くなる。詳細は line_weight.island_ratio
-                    from . import line_weight
-                    max_ratio = line_weight.island_ratio(
-                        scene, mesh_islands.MAX_ISLANDS_PER_FACE)
+                    max_ratio = mesh_islands.MAX_ISLANDS_PER_FACE
                     # 手描き背景の1回目(メカの塗り = 細い線用)は抑えない。
                     # 抑えるのは手描きの塗りの役目で、メカの塗りは線を全部
                     # 出す。上限 0.08 島/面 は箱を結合した低ポリの建物で
@@ -523,8 +480,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     # しない」ことが既存の設計で、線の主役はボーン境界と
                     # パーツ間のシルエットにある。ここを下げると、そのために
                     # 置いたガードを素通しして細片が出る(t20/t24/t25 が落ちた)
-                    if not (has_subsurf and curve_blur_auto) \
-                            and not has_arm and not many_loose_parts:
+                    if not has_arm and not many_loose_parts:
                         n_parts = utils.count_loose_parts(obj.data)
                         low_deg, low_n = mesh_islands.lower_threshold_for_detail(
                             topo, n_parts, seam_boundaries_option,
@@ -678,40 +634,6 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # bmesh を作らなくなったので解放するものは無い。
                 # topo は普通の numpy 配列なので GC に任せる
                 pass
-
-            # 頂点カラーのぼかし。
-            #
-            # サブディビジョンがかかっていると、ケージの角は二面角が大きくても
-            # レンダリングでは丸くなる。角度で「鋭角」と判定された辺こそが
-            # 誤判定なので、そこに線を出してはいけない。残すべきなのは作者が
-            # 明示した辺(クリース/シャープ)だけ。それ以外は角度に関係なく
-            # 色の段差を溶かす。
-            #
-            # 手動でぼかし回数を指定した場合(サブディビジョン無し)は、
-            # 従来どおり二面角のしきい値で判断する
-            if obj_blur > 0 and topo is not None:
-                cols = np.stack([final_face_colors_r, final_face_colors_g,
-                                 final_face_colors_b], axis=1)
-                if has_subsurf and curve_blur_auto:
-                    barrier = topo.sharp | (topo.crease > 0.0)
-                    n_keep = int((barrier & topo.two_face).sum())
-                    cols = topo.smooth_face_colors(cols, obj_blur,
-                                                   barrier=barrier)
-                    print(f"[FreePencil] '{obj.name}': 頂点カラーぼかし "
-                          f"{obj_blur}回 / 残した辺(クリース・シャープ) "
-                          f"{n_keep:,}本")
-                else:
-                    n_soft = int((topo.two_face & ~np.isnan(topo.angle)
-                                  & (topo.angle < math.radians(curve_blur_deg))
-                                  ).sum())
-                    cols = topo.smooth_face_colors(
-                        cols, obj_blur, angle_rad=math.radians(curve_blur_deg))
-                    print(f"[FreePencil] '{obj.name}': 頂点カラーぼかし "
-                          f"{obj_blur}回 / {curve_blur_deg:.0f}度未満の辺 "
-                          f"{n_soft:,}本")
-                final_face_colors_r = np.ascontiguousarray(cols[:, 0])
-                final_face_colors_g = np.ascontiguousarray(cols[:, 1])
-                final_face_colors_b = np.ascontiguousarray(cols[:, 2])
 
             # 稜線の起伏。島は面の縁でしか色を変えられないので、なめらかな
             # 出っ張り(まぶたの上など)に線が出せない。法線から「大きな向き」

@@ -2083,26 +2083,7 @@ def t48():
         md, ms = measure(tmp)
         assert ms > md * 1.2, (
             f"開いた所が太くなっていない: 周りのインク 浅い {ms:.3f} / 深い {md:.3f}")
-        # 逆向きのスイッチ
-        scene.fp_lw_deep_thick = True
-        bpy.ops.freepencil2.link_button()
-        scene.fp_white_preview = True
-        tree = compat.get_compositor_tree(scene)
-        dep = binz = None
-        for n in tree.nodes:
-            if n.label != lab or n.type != "MATH":
-                continue
-            src = n.inputs[1].links[0].from_node if n.inputs[1].links else None
-            if (n.operation == "SUBTRACT" and src is not None and src.type == "BLUR"
-                    and abs(n.inputs[0].default_value - 1.0) < 1e-6):
-                dep = n
-            src0 = n.inputs[0].links[0].from_node if n.inputs[0].links else None
-            if (n.operation == "GREATER_THAN" and src0 is not None
-                    and src0.type == "INVERT" and binz is None):
-                binz = n
-        md2, ms2 = measure(tmp)
-        assert md2 > ms2 * 1.2, (
-            f"くぼみを太くが効いていない: 周りのインク 深い {md2:.3f} / 浅い {ms2:.3f}")
+        # 逆向きのスイッチ(fp_lw_deep_thick)は v2.8 の整理で消した
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         bpy.ops.wm.read_homefile(use_empty=True)
