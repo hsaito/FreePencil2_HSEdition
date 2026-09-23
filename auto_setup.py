@@ -140,6 +140,12 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
             scene["fp_fine_pass"] = True
         elif "fp_fine_pass" in scene:
             del scene["fp_fine_pass"]
+        # キャラ(リグ付き)は手描き系ではざっくり塗り + ボーンの塗り。
+        # 精密は v2.7 のまま(リグ付きでも角度で分ける)
+        if weighted:
+            scene["fp_rig_coarse"] = True
+        elif "fp_rig_coarse" in scene:
+            del scene["fp_rig_coarse"]
         # 葉の隙間埋め 6px(200% 基準 = 1080p で 3px)。線の濃さは 0.75。
         # 背景は線を細く(強さ 0.5 = 最大 6px、1080p で 3px)。太いのは
         # 近くに寄ったときだけでよい

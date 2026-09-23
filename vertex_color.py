@@ -41,6 +41,8 @@ VCOL_LAYER_MECHA = "mecha_color"
 VCOL_LAYER_MASK = "mask_color"
 VCOL_LAYER_LINE = "line_color"
 VCOL_LAYER_BONE = "bone_color"
+# キャラのざっくり塗りで「小さいパーツ」とみなす面積の割合(オブジェクト全体比)
+COARSE_SMALL_PART = 0.02
 DEFAULT_MATERIAL_NAME = "FreePencil_Material"
 
 # ハッシュ関数
@@ -419,6 +421,14 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     bpy.ops.object.mode_set(mode=original_mode)
                 continue
 
+            # キャラ(リグ付き)は手描き系の仕上がりでは「ざっくり塗り」にする。
+            # 角度・UV シームでは分けず、つながったメッシュ x マテリアルごとに
+            # 1色。キャラの線は、このパーツの境目とボーンの塗り(ウェイトで
+            # ぼかした bone_color)で出す。角度で細かく分けると、腕や髪が線で
+            # 黒く潰れた(ジョギングの動画で実測)
+            rig_coarse = (bool(scene.get("fp_rig_coarse"))
+                          and any(m.type == 'ARMATURE' and m.object
+                                  for m in obj.modifiers))
             try:
                 # --- 0. 自動しきい値: 二面角の分布からモデル系統を判定 ---
                 effective_threshold_rad = angle_threshold_rad
@@ -428,7 +438,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # で補間されてから描かれる
                 has_subsurf = any(m.type == 'SUBSURF' and m.show_viewport
                                   for m in obj.modifiers)
-                if getattr(scene, "fp_sharp_auto", False):
+                if getattr(scene, "fp_sharp_auto", False) and not rig_coarse:
                     angle_samples = topo.angle_samples_deg()
                     # リグ付きモデルは bone_color が線の主役なので保守的に
                     has_arm = any(m.type == 'ARMATURE' and m.object
@@ -448,7 +458,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # 復元漏れの温床だった。アーティストの意図は Freestyle
                 # マークではなく「シャープ」で受け取る(実測でマークは
                 # 使われておらず、5.x では属性ごと消えているため)。
-                if getattr(scene, "fp_sharp_auto", False):
+                if getattr(scene, "fp_sharp_auto", False) and not rig_coarse:
                     # 自動のときは切った結果を見て閾値を詰める。
                     # 分布から系統を当てる方式だけでは、実測で 39モデル中
                     # 9モデルが網目状に砕けていた
@@ -495,6 +505,32 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                                              seam_boundaries_option,
                                              clear_sharps_option)
                         topo.build_islands()
+                elif rig_coarse:
+                    # ざっくり塗り: つながったパーツ x マテリアルごとに1色。
+                    # ただし小さいパーツ(面積が全体の COARSE_SMALL_PART 未満)は
+                    # マテリアルごとに1つへまとめる。髪はカードが数百枚の別
+                    # パーツで、1枚ずつ色が変わると線だらけになった(anime-girl
+                    # の髪 568島)。マテリアル単位にまとめ切ると、服が1マテリアル
+                    # のモデルでスカートとブラウスの境目まで消えた
+                    topo.mark_boundaries(math.pi, False, True)
+                    sel = topo.two_face
+                    topo.is_boundary[sel] |= (topo.material[topo.face_a[sel]]
+                                              != topo.material[topo.face_b[sel]])
+                    topo.build_islands()
+                    area = np.asarray(topo.area, dtype=np.float64)
+                    total = max(float(area.sum()), 1e-12)
+                    mats = np.asarray(topo.material)
+                    keep, small = [], {}
+                    for isl in topo.islands:
+                        if area[isl].sum() / total >= COARSE_SMALL_PART:
+                            keep.append(isl)
+                        else:
+                            small.setdefault(int(mats[isl[0]]), []).append(isl)
+                    keep += [np.concatenate(v).astype(np.int32)
+                             for v in small.values()]
+                    topo.set_islands(keep)
+                    print(f"[FreePencil] '{obj.name}': キャラ(リグ付き)は"
+                          f"ざっくり塗り {len(topo.islands)}島")
                 else:
                     topo.mark_boundaries(effective_threshold_rad,
                                          seam_boundaries_option,
@@ -527,7 +563,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # --- 2.7 葉を房にまとめる(手描き背景モードだけ) ---
                 # 既定 0 = この分岐を通らない。精密・キャラの経路は不変
                 k_clumps = int(getattr(scene, "fp_foliage_clumps", 0))
-                if k_clumps > 0 and len(islands) > 1:
+                if k_clumps > 0 and len(islands) > 1 and not rig_coarse:
                     n_before = len(islands)
                     n_clumps = mesh_islands.clump_small_islands(
                         topo, k_clumps, master_operation_seed_int)
@@ -640,7 +676,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
             # を引いた残りを島の中に薄く足して、そこだけ色を動かす。
             # 平らな面では残差がほぼゼロなので、メカには何も足されない
             ridge_offset = None
-            if ridge_amount > 0.0:
+            if ridge_amount > 0.0 and not rig_coarse:
                 got = mesh_islands.ridge_residual(obj.data, ridge_radius)
                 if got is not None:
                     d, n_iter = got

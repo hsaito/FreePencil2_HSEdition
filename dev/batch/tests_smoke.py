@@ -2693,6 +2693,66 @@ def t58():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("character (rigged): coarse paint - big parts one color each, small parts merged; precise unchanged")
+def t59():
+    # キャラ(リグ付き)は手描き系でざっくり塗り: 角度で分けず、大きいパーツ
+    # ごとに1色、小さいパーツ(髪のカードなど)はマテリアルごとに1色へまとめる。
+    # 目印が無い(精密)ときは従来どおり角度で分ける
+    import numpy as np
+
+    def build():
+        bpy.ops.wm.read_homefile(use_empty=True)
+        bpy.ops.mesh.primitive_cube_add(size=2.0)
+        parts = [bpy.context.object]
+        for i in range(30):                     # 髪のカード(小さい別パーツ)
+            bpy.ops.mesh.primitive_plane_add(size=0.1, location=(-1.2 + i * 0.08, 0, 1.2))
+            parts.append(bpy.context.object)
+        bpy.ops.object.select_all(action="DESELECT")
+        for o in parts:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = parts[0]
+        bpy.ops.object.join()
+        body = bpy.context.object
+        arm_data = bpy.data.armatures.new("A")
+        arm = bpy.data.objects.new("A", arm_data)
+        bpy.context.scene.collection.objects.link(arm)
+        bpy.context.view_layer.objects.active = arm
+        bpy.ops.object.mode_set(mode="EDIT")
+        b = arm_data.edit_bones.new("spine")
+        b.head, b.tail = (0, 0, -1), (0, 0, 1)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        vg = body.vertex_groups.new(name="spine")
+        vg.add(list(range(len(body.data.vertices))), 1.0, "REPLACE")
+        mod = body.modifiers.new("A", "ARMATURE")
+        mod.object = arm
+        scene = bpy.context.scene
+        scene.fp_use_random_seed = False
+        scene.fp_color_seed = 5
+        scene.fp_sharp_auto = True
+        bpy.ops.object.select_all(action="DESELECT")
+        body.select_set(True)
+        bpy.context.view_layer.objects.active = body
+        return body
+
+    def n_face_colors(body):
+        ca = body.data.color_attributes["mecha_color"]
+        buf = np.empty(len(ca.data) * 4, dtype=np.float32)
+        ca.data.foreach_get("color", buf)
+        col = buf.reshape(-1, 4)[:, :3].round(3)
+        return len({tuple(col[p.loop_start]) for p in body.data.polygons})
+
+    body = build()
+    bpy.context.scene["fp_rig_coarse"] = True
+    bpy.ops.freepencil.auto_vertex_color()
+    coarse = n_face_colors(body)
+    body = build()
+    bpy.ops.freepencil.auto_vertex_color()
+    fine = n_face_colors(body)
+    assert coarse == 2, f"ざっくり塗りの色数 {coarse}(箱1色 + 小パーツ1色のはず)"
+    assert fine > 6, f"目印なし(精密)で角度の分割が効いていない: {fine}色"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

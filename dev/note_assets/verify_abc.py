@@ -67,10 +67,44 @@ def models():
                 o.select_set(True)
             bpy.context.view_layer.objects.active = meshes[0]
             sc.fp_auto_style = style
+            if "--bone-islands" in ARGV:      # キャラの塗り分けをボーン基準に(実験)
+                sc["fp_bone_islands"] = True
             bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
             sc.fp_white_preview = True
             print(f"@@@ {name} {style} fine={sc.fp_fine_lines} sens={sc.fp_lw_far_sens}", flush=True)
             fp_batch.render_still(sc, OUT / f"{name}_{key}.png", 1)
+            if "--vcol" in ARGV:
+                for attr in arg("--vcol-attrs", "mecha_color").split(","):
+                    vcol_still(sc, meshes, OUT / f"{name}_{key}_{attr.split('_')[0]}.png", attr)
+
+
+def vcol_still(sc, meshes, path, attr="mecha_color"):
+    """色属性を Attribute -> Emission で素通しに撮る(塗り分けを見る)。"""
+    m = bpy.data.materials.new("look_mecha")
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    a = nt.nodes.new("ShaderNodeAttribute")
+    a.attribute_type = "GEOMETRY"
+    a.attribute_name = attr
+    e = nt.nodes.new("ShaderNodeEmission")
+    o = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(a.outputs["Color"], e.inputs["Color"])
+    nt.links.new(e.outputs["Emission"], o.inputs["Surface"])
+    saved = [(ms, ms.link, ms.material) for ob in meshes for ms in ob.material_slots]
+    for ob in meshes:
+        for ms in ob.material_slots:
+            ms.link = "OBJECT"
+            ms.material = m
+    comp, pct = sc.render.use_compositing, sc.render.resolution_percentage
+    sc.render.use_compositing = False
+    sc.render.resolution_percentage = 100
+    sc.render.filepath = str(path)
+    bpy.ops.render.render(write_still=True)
+    sc.render.use_compositing, sc.render.resolution_percentage = comp, pct
+    for ms, link, mat in saved:
+        ms.link = link
+        ms.material = mat
 
 
 def town():
