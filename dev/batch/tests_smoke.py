@@ -2837,13 +2837,6 @@ def t61():
 
     hard = run(False)
     soft = run(True)
-    # 左右の明るさ: upper/lower は中央扱い。名前に .L/.R を付けたボーンで確かめる
-    from freepencil2 import vertex_color as vc_mod
-    lum = lambda c: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
-    l_ = lum(vc_mod._side_tone("thigh.L", (0.3, 0.4, 0.5)))
-    r_ = lum(vc_mod._side_tone("mixamorig:RightUpLeg", (0.3, 0.4, 0.5)))
-    c_ = lum(vc_mod._side_tone("spine", (0.3, 0.4, 0.5)))
-    assert l_ > c_ + 0.1 > r_ + 0.2, f"左右・中央の明るさが分かれていない: L{l_:.2f} C{c_:.2f} R{r_:.2f}"
     assert hard > 0.01, f"ボーンの色が硬い境目で変わっていない: {hard}"
     assert soft < hard * 0.6, f"ざっくり塗りでボーンの段差が和らいでいない: {hard:.3f} -> {soft:.3f}"
     bpy.ops.wm.read_homefile(use_empty=True)

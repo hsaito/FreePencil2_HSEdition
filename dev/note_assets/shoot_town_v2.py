@@ -105,6 +105,30 @@ def aim(cam, f):
             return
 
 
+def spin_wheels(car, dist, f0, f1):
+    """車輪(子の wheel_*)を進んだ距離ぶん回す。角度 = 距離 / 半径。
+
+    車の正面は -y、車輪の軸は車の x。前へ進むとき +x 回りに回すと、
+    タイヤの上側が前(-y)へ動く。
+    """
+    for w in car.children:
+        if not w.name.startswith("wheel_"):
+            continue
+        r = float(w.get("fp_r", 0.3)) * car.matrix_world.to_scale().x
+        # 本当の転がりは 9m/s・半径0.34m で1コマ63度。5本スポークは72度ごとに同じ
+        # 形なので、24fps では止まって見えるか逆回りに見える(車輪の錯覚)。
+        # 1コマ 25 度までに抑える(遅めだが前へ回って見える)
+        per_frame = min(dist / max(r, 1e-3) / max(f1 - f0, 1), math.radians(25.0))
+        base = w.rotation_euler.x
+        w.rotation_euler.x = base
+        w.keyframe_insert("rotation_euler", index=0, frame=f0)
+        w.rotation_euler.x = base + per_frame * (f1 - f0)
+        w.keyframe_insert("rotation_euler", index=0, frame=f1)
+        for fc in w.animation_data.action.fcurves:
+            for kp in fc.keyframe_points:
+                kp.interpolation = "LINEAR"
+
+
 def moving_cars(sc):
     """走る車: 大通りの車線にいる車を全部走らせる(止まった車と重ならないように)。
 
@@ -123,8 +147,9 @@ def moving_cars(sc):
         # 横切る車が交差点を通る間(2〜5.5秒)に交差点へ来る車は外す
         # (ずらすと隣の車に重なる)
         if any(-8.0 < y0 + speed * t < 4.0 for t in (2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5)):
-            o.hide_render = True
-            o.hide_viewport = True
+            for ob in [o] + list(o.children):        # 車輪も一緒に消す
+                ob.hide_render = True
+                ob.hide_viewport = True
             continue
         for f in (1, FRAMES):
             o.location.y = y0 + speed * (f - 1) / FPS
@@ -133,6 +158,7 @@ def moving_cars(sc):
             for fc in o.animation_data.action.fcurves:
                 for kp in fc.keyframe_points:
                     kp.interpolation = "LINEAR"
+        spin_wheels(o, abs(speed) * (FRAMES - 1) / FPS, 1, FRAMES)
         moved += 1
     # カット A で手前を横切る車を 1 台、横町に置いて走らせる
     if cars:
@@ -142,6 +168,12 @@ def moving_cars(sc):
         # copy() はアクションを共有する。そのままキーを打つと元の車も同じ
         # 経路を走り、2台が同じ場所に重なった(実測: 3秒の交差点)
         c.animation_data_clear()
+        for w in [w for w in src.children if w.name.startswith("wheel_")]:
+            wc = w.copy()                            # 車輪も付け替える(子は copy されない)
+            sc.collection.objects.link(wc)
+            wc.animation_data_clear()
+            wc.parent = c
+            wc.hide_render = wc.hide_viewport = False
         c.rotation_euler = (0, 0, math.radians(-90))     # 正面(-y)を -x へ
         for f, x in ((1, 22.0), (int(8 * FPS), -26.0)):
             c.location = (x, -2.6, 0.0)
@@ -149,6 +181,7 @@ def moving_cars(sc):
         for fc in c.animation_data.action.fcurves:
             for kp in fc.keyframe_points:
                 kp.interpolation = "LINEAR"
+        spin_wheels(c, 48.0, 1, int(8 * FPS))
         moved += 1
     return moved
 

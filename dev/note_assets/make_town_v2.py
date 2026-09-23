@@ -678,6 +678,113 @@ def flatten(objs, name):
     return o
 
 
+def _loose_labels(me):
+    """頂点ごとのつながり番号(ルースパーツ)。ラベル伝搬を numpy で回す。"""
+    import numpy as np
+    n = len(me.vertices)
+    ev = np.empty(len(me.edges) * 2, dtype=np.int64)
+    me.edges.foreach_get("vertices", ev)
+    ev = ev.reshape(-1, 2)
+    lab = np.arange(n)
+    while True:
+        a, b = lab[ev[:, 0]], lab[ev[:, 1]]
+        m = np.minimum(a, b)
+        new = lab.copy()
+        np.minimum.at(new, ev[:, 0], m)
+        np.minimum.at(new, ev[:, 1], m)
+        new = new[new]
+        if np.array_equal(new, lab):
+            return lab
+        lab = new
+
+
+def _parts(me):
+    import numpy as np
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    lab = _loose_labels(me)
+    order = np.argsort(lab, kind="stable")
+    cuts = np.flatnonzero(np.diff(lab[order])) + 1
+    return co, [(grp, co[grp].min(0), co[grp].max(0)) for grp in np.split(order, cuts)]
+
+
+def split_wheels(o, pat):
+    """1枚に焼いた車から車輪を4つの別オブジェクトに分ける(回すため)。
+
+    名前では見分けられない(6車種中2つは車輪の名前が無く、1つは1メッシュ)
+    ので形で探す: ルースパーツのうち、低い位置の四隅にあり、横から見て丸く
+    車軸方向に薄いものがタイヤ。その円筒の中に収まる部品(ホイール・ボルト・
+    ディスク)を同じ車輪にまとめる。原点は車輪の中心。戻り値は車輪のリスト。
+    """
+    import numpy as np
+    bpy.ops.object.select_all(action="DESELECT")
+    o.select_set(True)
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    me = o.data
+    co, parts = _parts(me)
+    lo_all, hi_all = co.min(0), co.max(0)
+    W, L, H = hi_all - lo_all
+    ctr = (lo_all + hi_all) / 2
+    tires = {}
+    for grp, p_lo, p_hi in parts:
+        c, sz = (p_lo + p_hi) / 2, p_hi - p_lo
+        if not (0.25 * H < sz[2] < 0.65 * H and c[2] < 0.45 * H):
+            continue
+        if abs(sz[1] - sz[2]) / sz[2] > 0.35 or sz[0] > 0.8 * sz[2]:
+            continue
+        if abs(c[0] - ctr[0]) < 0.2 * W or abs(c[1] - ctr[1]) < 0.2 * L:
+            continue
+        q = (int(np.sign(c[0] - ctr[0])), int(np.sign(c[1] - ctr[1])))
+        if q not in tires or sz[2] > tires[q][1][2]:
+            tires[q] = (c, sz)
+    if len(tires) != 4:
+        say(f"  {pat}: 車輪が4つ見つからない({len(tires)})。回さない")
+        return []
+    wheels = []
+    for q, (wc, wsz) in sorted(tires.items()):
+        r = float(wsz[2] / 2)
+        co, parts = _parts(me)                 # 分けるたびに頂点番号が詰まる
+        members = []
+        for grp, p_lo, p_hi in parts:
+            c = (p_lo + p_hi) / 2
+            if abs(c[0] - wc[0]) > wsz[0] * 0.9 + 0.02:
+                continue
+            far = max(((y - wc[1]) ** 2 + (z - wc[2]) ** 2) ** 0.5
+                      for y in (p_lo[1], p_hi[1]) for z in (p_lo[2], p_hi[2]))
+            if far > r * 1.05:
+                continue
+            members.append(grp)
+        if not members:
+            continue
+        sel = np.zeros(len(me.vertices), dtype=bool)
+        sel[np.concatenate(members)] = True
+        me.vertices.foreach_set("select", sel)
+        me.edges.foreach_set("select", np.zeros(len(me.edges), dtype=bool))
+        me.polygons.foreach_set("select", np.zeros(len(me.polygons), dtype=bool))
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_mode(type="VERT")
+        bpy.ops.mesh.separate(type="SELECTED")
+        bpy.ops.object.mode_set(mode="OBJECT")
+        w = next(x for x in bpy.context.selected_objects if x is not o)
+        side = "L" if q[0] < 0 else "R"
+        end = "F" if q[1] < 0 else "B"
+        w.name = f"wheel_{pat}_{side}{end}"
+        center = o.matrix_world @ Vector(wc)
+        w.data.transform(Matrix.Translation(-Vector(wc)))
+        w.matrix_world = Matrix.Translation(center)
+        w.parent = o
+        w.matrix_parent_inverse = o.matrix_world.inverted()
+        w["fp_r"] = r
+        wheels.append(w)
+        bpy.ops.object.select_all(action="DESELECT")
+        o.select_set(True)
+        bpy.context.view_layer.objects.active = o
+    say(f"  {pat}: 車輪 {len(wheels)} つを分けた(半径 {[round(w['fp_r'], 2) for w in wheels]})")
+    return wheels
+
+
 def place_asset(o, height):
     bb = td.bounds([o])
     size = bb[1] - bb[0]
@@ -688,8 +795,8 @@ def place_asset(o, height):
                                                  1000.0 - (bb[0].y + bb[1].y) / 2, -bb[0].z))))
 
 
-def duplicate(o, x, y, rot_deg, scale=1.0):
-    """1枚に焼いたアセットのリンク複製(メッシュ共有)。"""
+def duplicate(o, x, y, rot_deg, scale=1.0, wheels=()):
+    """1枚に焼いたアセットのリンク複製(メッシュ共有)。車輪も複製して子にする。"""
     base = Vector((1000.0, 1000.0, 0.0))
     c = o.copy()
     bpy.context.scene.collection.objects.link(c)
@@ -698,7 +805,119 @@ def duplicate(o, x, y, rot_deg, scale=1.0):
     c.matrix_world = m @ o.matrix_world
     c.hide_render = False
     c.hide_viewport = False
+    bpy.context.view_layer.update()
+    for w in wheels:
+        wc = w.copy()
+        bpy.context.scene.collection.objects.link(wc)
+        wc.parent = c
+        wc.matrix_parent_inverse = c.matrix_world.inverted()
+        wc.matrix_world = m @ w.matrix_world
+        wc.hide_render = False
+        wc.hide_viewport = False
     return c
+
+
+# ---------------------------------------------------------------- 歩くデッサン人形
+
+DOLL_SRC = HERE / "out" / "dessin" / "dessin170_src.blend"
+DOLL_OBJS = ("man_grp", "man_rig", "rig_ui", "head_rig", "foot_rig", "hand_rig",
+             "body", "foot", "head", "hand")
+WALK_SPEED = 1.3        # m/s(dessin_walk.STRIDE / 1秒)
+FRAMES_TOTAL = 720      # shoot_town_v2 の尺と同じ(30 秒 x 24)
+
+
+def load_doll():
+    """デッサン人形を1体まるごと追加する(内部の参照は新しい複製同士で張り直される)。"""
+    with bpy.data.libraries.load(str(DOLL_SRC), link=False) as (src, dst):
+        dst.objects = [n for n in DOLL_OBJS if n in src.objects]
+    objs = [ob for ob in dst.objects if ob is not None]
+    for ob in objs:
+        bpy.context.scene.collection.objects.link(ob)
+    grp = next(ob for ob in objs if ob.name.startswith("man_grp"))
+    rig = next(ob for ob in objs if ob.name.startswith("man_rig"))
+    meshes = [ob for ob in objs if ob.type == "MESH"]
+    for o in meshes:
+        # ミラーを実体にする。ミラーのままだと左右が同じ塗りになり、交差した
+        # 脚の間に線が出なかった(実測)
+        md = next((m for m in o.modifiers if m.type == "MIRROR"), None)
+        if md is not None:
+            bpy.ops.object.select_all(action="DESELECT")
+            o.select_set(True)
+            bpy.context.view_layer.objects.active = o
+            if o.data.shape_keys:
+                o.shape_key_clear()
+            bpy.ops.object.modifier_apply(modifier=md.name)
+    for o in meshes:
+        # 筋肉のノーマルマップはモノクロの陰影でまだらな灰色になった。外す
+        for ms in o.material_slots:
+            mat = ms.material
+            if mat is None or not mat.use_nodes or mat.get("fp_doll_flat"):
+                continue
+            for n in [n for n in mat.node_tree.nodes if n.type in ("NORMAL_MAP", "BUMP")]:
+                mat.node_tree.nodes.remove(n)
+            mat["fp_doll_flat"] = True
+    return grp, rig, meshes
+
+
+# カットごとに人形が写る場所(y の範囲)と人数。歩道は横町で切れるので、
+# その中だけを往復する(横町・車道には出ない)
+WALK_ZONES = (
+    ((-42.0, -7.0), 8),      # カット A: 横断歩道の脇から見える歩道
+    ((7.0, 58.0), 12),       # カット B: 通りを進むときの前方
+    ((70.0, 112.0), 10),     # カット C: 交差点の北の角から先
+)
+
+
+def walkers(rng):
+    """歩道を往復する人形。列(x)ごとに受け持つ区間を重ねないので、ぶつからない。"""
+    import dessin_walk
+    step = WALK_SPEED / 24.0
+    lanes = [sx * (ROAD + o) for sx in (-1, 1) for o in (1.5, 2.1, 2.7, 3.2)]
+    taken = {x: [] for x in lanes}
+    made = []
+    for (lo, hi), count in WALK_ZONES:
+        k = tries = 0
+        while k < count and tries < 300:
+            tries += 1
+            x = rng.choice(lanes)
+            length = rng.uniform(8.0, 18.0)
+            a = rng.uniform(lo, hi - length)
+            b = a + length
+            if any(a < bb + 1.5 and aa - 1.5 < b for aa, bb in taken[x]):
+                continue
+            taken[x].append((a, b))
+            grp, rig, meshes = load_doll()
+            # 往復: 端に着いたら向きを変える(向きは一瞬で切り替える)
+            y = rng.uniform(a, b)
+            d = rng.choice((1, -1))
+            keys = [(1, y, d)]
+            for f in range(2, FRAMES_TOTAL + 1):
+                y += d * step
+                if y > b or y < a:
+                    y = min(max(y, a), b)
+                    d = -d
+                    keys.append((f, y, d))
+            keys.append((FRAMES_TOTAL, y, d))
+            for f, yy, dd in keys:
+                grp.location = (x, yy, 0.0)
+                grp.keyframe_insert("location", frame=f)
+                grp.rotation_euler = (0.0, 0.0, math.radians(180.0 if dd > 0 else 0.0))
+                grp.keyframe_insert("rotation_euler", frame=f)
+            for fc in grp.animation_data.action.fcurves:
+                rot = fc.data_path == "rotation_euler"
+                for kp in fc.keyframe_points:
+                    kp.interpolation = "CONSTANT" if rot else "LINEAR"
+            act = dessin_walk.make_walk(rig, name=f"Walk_{len(made)}")
+            off = rng.randrange(dessin_walk.CYCLE)       # 歩調をずらす
+            for fc in act.fcurves:
+                for kp in fc.keyframe_points:
+                    kp.co.x += off
+                    kp.handle_left.x += off
+                    kp.handle_right.x += off
+            made.append(meshes)
+            k += 1
+    say(f"歩く人形 {len(made)} 体")
+    return [ob for m in made for ob in m]
 
 
 def assets(rng):
@@ -706,13 +925,11 @@ def assets(rng):
     lib = {}
     kinds = {"european-maple": "trees", "police-car": "cars", "nypd_toyota": "cars",
              "lancia-delta": "cars", "hyundai-veloster": "cars", "audi_r8": "cars",
-             "mclaren_720s": "cars", "man_01": "people",
-             "standing-cool-bald": "people", "stylized-male": "people", "anime-girl": "people"}
+             "mclaren_720s": "cars"}
     for pat, height in (("european-maple", 5.6), ("police-car", 1.5), ("nypd_toyota", 1.5),
                         ("lancia-delta", 1.45), ("hyundai-veloster", 1.4), ("audi_r8", 1.25),
                         ("mclaren_720s", 1.2),   # メルセデス SLR は複製すると STEP0 の後のレンダで落ちる(実測)
-                        ("man_01", 1.75), ("standing-cool-bald", 1.8), ("stylized-male", 1.75),
-                        ("anime-girl", 1.6), ("manchester-acacia", 0.8), ("trash_can", 1.0)):
+                        ("manchester-acacia", 0.8), ("trash_can", 1.0)):
         if kinds.get(pat) in SKIP or pat in SKIP:
             continue
         objs = td.load_lot(pat)
@@ -723,15 +940,20 @@ def assets(rng):
         if o is None:
             continue
         place_asset(o, height)
-        o.hide_render = True          # 原本は写らない。複製だけ写す
-        o.hide_viewport = True
-        lib[pat] = o
+        wheels = split_wheels(o, pat) if kinds.get(pat) == "cars" else []
+        for ob in [o] + wheels:
+            ob.hide_render = True     # 原本は写らない。複製だけ写す
+            ob.hide_viewport = True
+        lib[pat] = (o, wheels)
         say(f"  {pat}: {len(o.data.polygons)} 面")
 
     def put(pat, x, y, rot, scale=1.0):
         if pat not in lib:
             return
-        made.append(duplicate(lib[pat], x, y, rot, scale))
+        body, wheels = lib[pat]
+        c = duplicate(body, x, y, rot, scale, wheels)
+        made.append(c)
+        made.extend(c.children)
 
     cars = ["police-car", "nypd_toyota", "lancia-delta", "hyundai-veloster", "audi_r8",
             "mclaren_720s"]
@@ -769,16 +991,9 @@ def assets(rng):
         for k in range(3):
             if rng.random() < 0.7:
                 put(rng.choice(cars), sx * (CURB + setback / 2), cy - 6 + k * 3.0, 90 + rng.uniform(-3, 3))
-    # 人: 歩道に 18 人
-    people = ["man_01", "standing-cool-bald", "stylized-male", "anime-girl"]
-    n = 0
-    while n < 18:
-        sx = rng.choice((-1, 1))
-        y = rng.uniform(-45, 125)
-        if any(abs(y - c) < XW + 2 for c in CROSS):
-            continue
-        put(rng.choice(people), sx * (ROAD + rng.uniform(0.9, 2.9)), y, rng.uniform(0, 360))
-        n += 1
+    # 人: 歩道を歩くデッサン人形(リグ付き = キャラのざっくり塗り + ボーン塗り)
+    if "people" not in SKIP:
+        made.extend(walkers(rng))
     # 人は歩道だけ(横断歩道の上には置かない)
     for y in (12.5, 88.5):
         put("manchester-acacia", -(ROAD + 2.4), y + 2.5, 90)
@@ -870,6 +1085,8 @@ def main():
             o.select_set(True)
     bpy.context.view_layer.objects.active = meshes[0]
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "town_pre.blend"))   # STEP0 前(調査用)
+    if "--no-step0" in ARGV:          # 形と動きだけ確かめる(STEP0 は約 20 分かかる)
+        return
     step0_and_save()
 
 
