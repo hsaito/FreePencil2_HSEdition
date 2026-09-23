@@ -69,6 +69,8 @@ def models():
             sc.fp_auto_style = style
             if "--bone-islands" in ARGV:      # キャラの塗り分けをボーン基準に(実験)
                 sc["fp_bone_islands"] = True
+            if arg("--bone-smooth") is not None:   # ボーンの色をぼかす回数(実験)
+                sc["fp_bone_smooth"] = int(arg("--bone-smooth"))
             bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
             sc.fp_white_preview = True
             print(f"@@@ {name} {style} fine={sc.fp_fine_lines} sens={sc.fp_lw_far_sens}", flush=True)

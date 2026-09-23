@@ -2785,6 +2785,63 @@ def t60():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("character (rigged, coarse): hard weight steps in bone_color are softened")
+def t61():
+    # 粗いケージでウェイトが1辺で切り替わると、bone_color の段差がサブディブで
+    # 帯になり灰色の塊になった(デッサン人形の胸)。ざっくり塗りのときは隣の頂点と
+    # 平均して段差を小さくする。目印が無いとき(精密)は従来どおり段差のまま
+    import numpy as np
+
+    def run(coarse):
+        bpy.ops.wm.read_homefile(use_empty=True)
+        bpy.ops.mesh.primitive_cube_add(size=2.0)
+        body = bpy.context.object
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.subdivide(number_cuts=4)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        arm_data = bpy.data.armatures.new("A")
+        arm = bpy.data.objects.new("A", arm_data)
+        bpy.context.scene.collection.objects.link(arm)
+        bpy.context.view_layer.objects.active = arm
+        bpy.ops.object.mode_set(mode="EDIT")
+        for n, (h, t) in (("upper", ((0, 0, 0), (0, 0, 1))), ("lower", ((0, 0, -1), (0, 0, 0)))):
+            b = arm_data.edit_bones.new(n)
+            b.head, b.tail = h, t
+        bpy.ops.object.mode_set(mode="OBJECT")
+        up = body.vertex_groups.new(name="upper")
+        lo = body.vertex_groups.new(name="lower")
+        for v in body.data.vertices:            # 硬いウェイト(境目で 1 -> 0)
+            (up if v.co.z > 0.01 else lo).add([v.index], 1.0, "REPLACE")
+        body.modifiers.new("A", "ARMATURE").object = arm
+        scene = bpy.context.scene
+        scene.fp_use_random_seed = False
+        scene.fp_color_seed = 5
+        if coarse:
+            scene["fp_rig_coarse"] = True
+        bpy.ops.object.select_all(action="DESELECT")
+        body.select_set(True)
+        bpy.context.view_layer.objects.active = body
+        bpy.ops.freepencil.auto_vertex_color()
+        me = body.data
+        ca = me.color_attributes["bone_color"]
+        buf = np.empty(len(ca.data) * 4, dtype=np.float32)
+        ca.data.foreach_get("color", buf)
+        lv = np.empty(len(me.loops), dtype=np.int32)
+        me.loops.foreach_get("vertex_index", lv)
+        vc = np.zeros((len(me.vertices), 3))
+        vc[lv] = buf.reshape(-1, 4)[:, :3]
+        ev = np.empty(len(me.edges) * 2, dtype=np.int32)
+        me.edges.foreach_get("vertices", ev)
+        ev = ev.reshape(-1, 2)
+        return float(np.abs(vc[ev[:, 0]] - vc[ev[:, 1]]).max())
+
+    hard = run(False)
+    soft = run(True)
+    assert hard > 0.01, f"ボーンの色が硬い境目で変わっていない: {hard}"
+    assert soft < hard * 0.6, f"ざっくり塗りでボーンの段差が和らいでいない: {hard:.3f} -> {soft:.3f}"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

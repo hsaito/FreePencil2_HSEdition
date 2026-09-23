@@ -130,6 +130,8 @@ def main():
             o.select_set(True)
         bpy.context.view_layer.objects.active = meshes[0]
         sc.fp_auto_style = style
+        if arg("--bone-smooth") is not None:   # ボーンの色をぼかす回数(実験)
+            sc["fp_bone_smooth"] = int(arg("--bone-smooth"))
         bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
         sc.fp_white_preview = True
         k = KEY[style]

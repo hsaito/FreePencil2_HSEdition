@@ -43,6 +43,8 @@ VCOL_LAYER_LINE = "line_color"
 VCOL_LAYER_BONE = "bone_color"
 # キャラのざっくり塗りで「小さいパーツ」とみなす面積の割合(オブジェクト全体比)
 COARSE_SMALL_PART = 0.02
+# キャラ(ざっくり塗り)でボーンの色を隣の頂点と平均する回数
+BONE_SMOOTH_ITERS = 4
 DEFAULT_MATERIAL_NAME = "FreePencil_Material"
 
 # ハッシュ関数
@@ -777,6 +779,24 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     else:
                         c = [1.0, 1.0, 1.0]
                     vertex_colors[v.index] = tuple(c)
+                # キャラ(ざっくり塗り)ではボーンの境目をさらにぼかす。粗いケージで
+                # ウェイトが1辺で切り替わると(デッサン人形の胸: spine_02 -> 03)、
+                # サブディビジョンがその段差を数px の帯に広げ、線にも無地にも
+                # ならない灰色の塊になった。隣の頂点と平均を数回とる。密な
+                # メッシュでは広がりがごく小さいので、ほぼ変わらない
+                n_smooth = int(scene.get("fp_bone_smooth", BONE_SMOOTH_ITERS))
+                if rig_coarse and n_smooth > 0 and len(verts) > 1:
+                    ev = np.empty(len(obj.data.edges) * 2, dtype=np.int32)
+                    obj.data.edges.foreach_get("vertices", ev)
+                    ev = ev.reshape(-1, 2)
+                    cols = np.asarray(vertex_colors, dtype=np.float64)
+                    deg = np.bincount(ev.ravel(), minlength=len(verts)).astype(np.float64)
+                    for _ in range(n_smooth):
+                        acc = cols.copy()
+                        np.add.at(acc, ev[:, 0], cols[ev[:, 1]])
+                        np.add.at(acc, ev[:, 1], cols[ev[:, 0]])
+                        cols = acc / (deg + 1.0)[:, None]
+                    vertex_colors = [tuple(c) for c in cols.tolist()]
             else:
                 vertex_colors = [(1.0, 1.0, 1.0)] * len(verts)
 
