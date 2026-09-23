@@ -47,6 +47,26 @@ COARSE_SMALL_PART = 0.02
 BONE_SMOOTH_ITERS = 4
 DEFAULT_MATERIAL_NAME = "FreePencil_Material"
 
+def _bone_side(name: str) -> str:
+    """ボーン名から左右を読む('L' / 'R' / 'C')。Mixamo・ARP・UE の書き方に対応。"""
+    n = name.lower()
+    if n.endswith((".l", "_l", ".left", "_left")) or "left" in n:
+        return "L"
+    if n.endswith((".r", "_r", ".right", "_right")) or "right" in n:
+        return "R"
+    return "C"
+
+
+SIDE_LUMA = {"L": 0.62, "C": 0.42, "R": 0.22}
+
+
+def _side_tone(name: str, rgb):
+    """色相は残して、明るさ(輝度)だけを左右・中央の帯に合わせる。"""
+    lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+    k = SIDE_LUMA[_bone_side(name)] / max(lum, 1e-4)
+    return tuple(min(0.9, max(0.0, c * k)) for c in rgb)
+
+
 # ハッシュ関数
 def get_pseudo_random_float_from_vec(
     p_x: float,
@@ -475,7 +495,8 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     used_deg, tries, ratio = mesh_islands.resolve_threshold(
                         topo, math.degrees(effective_threshold_rad),
                         seam_boundaries_option, clear_sharps_option,
-                        max_ratio=max_ratio)
+                        max_ratio=max_ratio,
+                        max_deg=float(scene.get("fp_raise_cap", 179.0)))
                     if tries > 1:
                         print(f"[FreePencil] '{obj.name}': island ratio too "
                               f"high, raised to {used_deg:.1f} deg "
@@ -700,6 +721,12 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
             if armature_mod:
                 arm_obj = armature_mod.object
                 mode = getattr(context.scene, "fp_bone_grouping_mode", "basename")
+                # キャラ(ざっくり塗り)では左右と中央でボーンの明るさを分ける。
+                # 同じ体の中で脚どうし・腕と胴が重なっても、色の明るさが近いと
+                # 線が出ない(線は輝度の勾配で決まる)。ボーンの色は名前のハッシュ
+                # なので、左右の脚が同じ明るさになることがあった。左を明るく・
+                # 右を暗く・中央を中間にする。精密はボーンの色を変えない
+                side_tone = rig_coarse
                 group_colors = {}
 
                 def normalize_name(name: str) -> str:
@@ -739,6 +766,8 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                         g = ((h >> 8) & 0xFF) % 45 + 16
                         b = ((h >> 16) & 0xFF) % 45 + 16
                         group_colors[vg.index] = (r / 100.0, g / 100.0, b / 100.0)
+                        if side_tone:
+                            group_colors[vg.index] = _side_tone(base, group_colors[vg.index])
 
                 # 硬境界ボーン(顎下ラインなど): ウェイトがなだらかだと色も
                 # 階調になりエッジ検出に掛からない(=線が出ない)ため、

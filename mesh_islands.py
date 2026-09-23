@@ -125,7 +125,7 @@ MIN_ISLANDS = 8       # これを下回るまでまとめない(線が消える�
 
 def resolve_threshold(topo, start_deg: float, seam: bool, clear: bool,
                       max_ratio: float = MAX_ISLANDS_PER_FACE,
-                      tries: int = 6) -> tuple:
+                      tries: int = 6, max_deg: float = 179.0) -> tuple:
     """実際に切ってみて、細かすぎたら閾値を上げ直す。
 
     二面角の分布だけで系統を当てにいく方式は、実測で 39モデル中 9モデルが
@@ -159,11 +159,11 @@ def resolve_threshold(topo, start_deg: float, seam: bool, clear: bool,
         if cnt <= limit:
             break
         lo = deg
-        if deg >= 179.0:
+        if deg >= max_deg:
             return used, n, cnt / nf
         # 上げ幅は「まだ遠いほど大きく」。1回で行き過ぎないよう頭打ちも置く
         over = min(8.0, cnt / max(limit, 1))
-        deg = min(179.0, deg + max(8.0, deg * 0.35 * over))
+        deg = min(max_deg, deg + max(8.0, deg * 0.35 * over))
     else:
         return used, n, cnt / nf
 

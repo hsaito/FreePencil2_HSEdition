@@ -69,10 +69,19 @@ def models():
             sc.fp_auto_style = style
             if "--bone-islands" in ARGV:      # キャラの塗り分けをボーン基準に(実験)
                 sc["fp_bone_islands"] = True
+            if "--fine-rig-precise" in ARGV:       # 細い線ではリグ付きも角度で分ける(実験)
+                sc["fp_fine_rig_precise"] = True
+            if "--side-tone" in ARGV:              # ボーンの明るさを左右で分ける(実験)
+                sc["fp_bone_side_tone"] = True
+            if arg("--raise-cap") is not None:     # 切れすぎで上げる角度の上限(実験)
+                sc["fp_raise_cap"] = float(arg("--raise-cap"))
             if arg("--bone-smooth") is not None:   # ボーンの色をぼかす回数(実験)
                 sc["fp_bone_smooth"] = int(arg("--bone-smooth"))
             bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
             sc.fp_white_preview = True
+            if "--mono" in ARGV:                   # 町と同じモノクロの陰影で見る
+                sc.fp_mono_floor = 0.55
+                sc.fp_preview_mode = 'MONO_LIGHT'
             print(f"@@@ {name} {style} fine={sc.fp_fine_lines} sens={sc.fp_lw_far_sens}", flush=True)
             fp_batch.render_still(sc, OUT / f"{name}_{key}.png", 1)
             if "--vcol" in ARGV:

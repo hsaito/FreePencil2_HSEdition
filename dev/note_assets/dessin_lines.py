@@ -108,6 +108,22 @@ def open_scene():
     sc.render.image_settings.file_format = "PNG"
     sc.render.image_settings.color_mode = "RGBA"
     meshes = meshes_of(sc)
+    if "--apply-mirror" in ARGV:               # 左右を別の塗りにできるよう、ミラーを実体にする
+        for o in meshes:
+            md = next((m for m in o.modifiers if m.type == "MIRROR"), None)
+            if md is None:
+                continue
+            bpy.ops.object.select_all(action="DESELECT")
+            o.select_set(True)
+            bpy.context.view_layer.objects.active = o
+            if o.data.shape_keys:
+                # シェイプキーがあると適用できないので、基底に焼いて外す
+                o.shape_key_clear()
+            bpy.ops.object.modifier_apply(modifier=md.name)
+    if "--walk" in ARGV:                       # 歩きの途中のポーズ(脚が開いたところ)
+        import dessin_walk
+        dessin_walk.make_walk(bpy.data.objects["man_rig"])
+        sc.frame_set(int(arg("--walk", "7")) if arg("--walk", "7").isdigit() else 7)
     stage(sc, meshes)
     return sc, meshes
 
@@ -130,10 +146,17 @@ def main():
             o.select_set(True)
         bpy.context.view_layer.objects.active = meshes[0]
         sc.fp_auto_style = style
+        if "--fine-rig-precise" in ARGV:
+            sc["fp_fine_rig_precise"] = True
+        if "--side-tone" in ARGV:
+            sc["fp_bone_side_tone"] = True
         if arg("--bone-smooth") is not None:   # ボーンの色をぼかす回数(実験)
             sc["fp_bone_smooth"] = int(arg("--bone-smooth"))
         bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
         sc.fp_white_preview = True
+        if "--mono" in ARGV:
+            sc.fp_mono_floor = 0.55
+            sc.fp_preview_mode = 'MONO_LIGHT'
         k = KEY[style]
         fp_batch.render_still(sc, OUT / f"{k}.png", 1)
         vcol_still(sc, meshes, OUT / f"{k}_mecha.png", "mecha_color")

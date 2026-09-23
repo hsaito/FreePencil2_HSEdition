@@ -98,9 +98,14 @@ def setup():
     for o in meshes:
         o.select_set(True)
     bpy.context.view_layer.objects.active = meshes[0]
-    sc.fp_auto_style = 'WEIGHTED'
+    sc.fp_auto_style = arg("--style", 'WEIGHTED')
+    if "--side-tone" in ARGV:               # ボーンの明るさを左右で分ける(実験)
+        sc["fp_bone_side_tone"] = True
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
     sc.fp_white_preview = True
+    if "--mono" in ARGV:
+        sc.fp_mono_floor = 0.55
+        sc.fp_preview_mode = 'MONO_LIGHT'
     print(f"@@@ STEP0 done: {len(meshes)} meshes, frames {sc.frame_start}-{sc.frame_end}, "
           f"bone_aov={sc.fp_bone_color}", flush=True)
     return sc, meshes
