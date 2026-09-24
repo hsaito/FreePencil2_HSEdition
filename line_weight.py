@@ -90,6 +90,13 @@ AO_DIST = 0.6        # くぼみを見る範囲(シーンの大きさに対す�
 LINE_BIN = 0.7       # 太らせる前に線とみなす濃さ
 WEIGHT_GAIN = 1.0    # 縮小後に線を濃くする倍率
 WEIGHT_TONE = 0.25   # 細い段ほど薄くする割合(0 = 太さだけ)
+# 密度フェード(200% 基準の px): 「線と線の狭い隙間」を閉じで見つける半径、
+# その隙間の多さを測るぼかし半径、効き始め/最大の隙間の割合
+DENSE_GAP = 3
+DENSE_BLOB = 4          # 線より太い塊とみなす半径(開き)
+DENSE_R = 8
+DENSE_T0 = 0.04
+DENSE_T1 = 0.25
 
 
 def edges_from_scene(scene) -> list:
@@ -654,6 +661,107 @@ def build_weight(tree, line_sock, ao_sock, scene, x0=900, y0=-200,
         tree.links.new(fdk.outputs[0], faded.inputs[1])
         last = faded
         faded["fp_tap"] = "far_fade"
+
+    # 密度フェード: 線が詰まった所を薄くする(つぶれ軽減)。
+    # 距離で薄くする「奥ほど薄く」では、手前でも細かい物(シャッターの
+    # スラット、ベランダの縦桟、外階段、カーテンウォールの格子)が黒い塊に
+    # なった(町 v4 の実測)。つぶれは距離ではなく画面上の線の詰まりで起きる。
+    #
+    # 何を「詰まり」と数えるか:
+    #   - インクの量(ぼかした線)で測ると、太い輪郭1本も濃いと数えて全体が
+    #     薄くなった(実測: 0.6 で電柱や建物の輪郭まで灰色)
+    #   - 線と線の間の狭い隙間: 芯を閉じ(膨らませて縮める)て埋まった所。
+    #     輪郭1本には隙間が無い。手すりや縦桟はここで拾える
+    #   - 線より太いインクの塊: 芯を開き(縮めて膨らませる)ても残る所。
+    #     すでに潰れ切った網戸・ブラインドの窓は隙間が無いのでこちらで拾う
+    # 二つの重みの大きい方を使う。
+    #
+    # 薄くする先は白ではなく周りの陰影。この段の線画には陰影(灰色)も
+    # 入っているので、そのまま倍率を掛けると壁の灰色まで白くなり、線の跡が
+    # 白い筋になった(実測)。線でない画素だけをぼかした平均(正規化ぼかし)を
+    # 周りの陰影とみなし、そこへ向けて混ぜる:
+    #   out = shade + (ink - shade) * (1 - (w * dense)^2.2)
+    dense = max(0.0, min(1.0, float(getattr(scene, "fp_lw_dense", 0.0))))
+    if dense > 0.0:
+        pct_ = max(1, getattr(scene.render, "resolution_percentage", 100))
+        sc_ = pct_ / 200.0
+        rg = max(1, int(round(DENSE_GAP * sc_)))
+        rb = max(1, int(round(DENSE_BLOB * sc_)))
+        rr = max(1, int(round(DENSE_R * sc_)))
+        yy = y0 - 860
+
+        def dil(src, r, dx):
+            n = tree.nodes.new("CompositorNodeDilateErode")
+            n.location = (x0 + dx, yy)
+            n.label = NODE_LABEL
+            _set_dilate(n, r)
+            tree.links.new(src, n.inputs[0])
+            return n
+
+        def blur(src, r, dx, dy=0):
+            n = tree.nodes.new("CompositorNodeBlur")
+            n.location = (x0 + dx, yy + dy)
+            n.label = NODE_LABEL
+            _set_blur(n, r)
+            tree.links.new(src, n.inputs[0])
+            return n
+        # 狭い隙間(閉じ - 芯)
+        cl_ = dil(dil(binz.outputs[0], rg, 1200).outputs[0], -rg, 1240)
+        gap = _math(tree, "SUBTRACT", x0 + 1280, yy)
+        gap.use_clamp = True
+        tree.links.new(cl_.outputs[0], gap.inputs[0])
+        tree.links.new(binz.outputs[0], gap.inputs[1])
+        gb = blur(gap.outputs[0], rr, 1320)
+        gw = _math(tree, "SUBTRACT", x0 + 1360, yy, b=DENSE_T0)
+        tree.links.new(gb.outputs[0], gw.inputs[0])
+        gw2 = _math(tree, "DIVIDE", x0 + 1400, yy, b=DENSE_T1 - DENSE_T0)
+        gw2.use_clamp = True
+        tree.links.new(gw.outputs[0], gw2.inputs[0])
+        # 線より太い塊(開き)
+        op = dil(dil(binz.outputs[0], -rb, 1200).outputs[0], rb, 1240)
+        op.location = (x0 + 1240, yy - 60)
+        ob = blur(op.outputs[0], rr, 1320, -60)
+        bw = _math(tree, "MULTIPLY", x0 + 1400, yy - 60, b=2.0)
+        bw.use_clamp = True
+        tree.links.new(ob.outputs[0], bw.inputs[0])
+        w_ = _math(tree, "MAXIMUM", x0 + 1440, yy)
+        tree.links.new(gw2.outputs[0], w_.inputs[0])
+        tree.links.new(bw.outputs[0], w_.inputs[1])
+        dmul = _math(tree, "MULTIPLY", x0 + 1480, yy, b=dense)
+        tree.links.new(w_.outputs[0], dmul.inputs[0])
+        dpow = _math(tree, "POWER", x0 + 1510, yy, b=2.2)
+        tree.links.new(dmul.outputs[0], dpow.inputs[0])
+        keep = _math(tree, "SUBTRACT", x0 + 1540, yy, a=1.0)
+        tree.links.new(dpow.outputs[0], keep.inputs[1])
+        # 周りの陰影: 線でない画素(芯を少し広げた外)だけの正規化ぼかし
+        nl_ = dil(binz.outputs[0], 2, 1200)
+        nl_.location = (x0 + 1200, yy - 140)
+        notl = _math(tree, "SUBTRACT", x0 + 1240, yy - 140, a=1.0)
+        tree.links.new(nl_.outputs[0], notl.inputs[1])
+        num = _math(tree, "MULTIPLY", x0 + 1280, yy - 140)
+        tree.links.new(inv.outputs[0], num.inputs[0])
+        tree.links.new(notl.outputs[0], num.inputs[1])
+        nb = blur(num.outputs[0], rr * 2, 1320, -140)
+        db_ = blur(notl.outputs[0], rr * 2, 1320, -200)
+        den = _math(tree, "MAXIMUM", x0 + 1360, yy - 200, b=0.02)
+        tree.links.new(db_.outputs[0], den.inputs[0])
+        shade = _math(tree, "DIVIDE", x0 + 1400, yy - 140)
+        shade.use_clamp = True
+        tree.links.new(nb.outputs[0], shade.inputs[0])
+        tree.links.new(den.outputs[0], shade.inputs[1])
+        diff = _math(tree, "SUBTRACT", x0 + 1540, yy - 100)
+        diff.use_clamp = True
+        tree.links.new(last.outputs[0], diff.inputs[0])
+        tree.links.new(shade.outputs[0], diff.inputs[1])
+        dfaded = _math(tree, "MULTIPLY_ADD", x0 + 1600, y0 - 520)
+        tree.links.new(diff.outputs[0], dfaded.inputs[0])
+        tree.links.new(keep.outputs[0], dfaded.inputs[1])
+        tree.links.new(shade.outputs[0], dfaded.inputs[2])
+        last = dfaded
+        gap["fp_tap"] = "dense_gap"
+        op["fp_tap"] = "dense_blob"
+        shade["fp_tap"] = "dense_shade"
+        dfaded["fp_tap"] = "dense_fade"
 
     # 太らせた線は 2値(しきい値)で決めているので、縁がギザギザのまま
     # 50% 縮小に入り、1080p で 2段階のアンチエイリアスしか残らなかった

@@ -2842,6 +2842,81 @@ def t61():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("dense fade: packed slats get lighter, a lone thick outline keeps its ink")
+def t62():
+    # 左に細い板を詰めて並べた「シャッター」、右に離れた箱を1つ。密度フェードを
+    # 上げると、左の線のインクは減り、右の箱の輪郭はほとんど変わらないこと。
+    # インクの量で測っていた版は、輪郭1本まで薄くなった(実測)
+    import math
+    import shutil
+    import tempfile
+
+    def build():
+        bpy.ops.wm.read_homefile(use_empty=True)
+        objs = []
+        for i in range(24):                                  # 詰めた板(間隔 5cm)
+            bpy.ops.mesh.primitive_cube_add(size=1, location=(-1.2, 0, -0.6 + i * 0.05))
+            o = bpy.context.object
+            o.scale = (0.9, 0.2, 0.012)
+            objs.append(o)
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(1.2, 0, 0))   # 離れた箱
+        objs.append(bpy.context.object)
+        scene = bpy.context.scene
+        cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+        cam.location = (0, -6, 0)
+        cam.rotation_euler = (math.radians(90), 0, 0)
+        scene.collection.objects.link(cam)
+        scene.camera = cam
+        scene.fp_use_random_seed = False
+        scene.fp_color_seed = 7
+        scene.fp_enable_compositor_view = False
+        scene.fp_auto_detect_aov = False
+        scene.fp_auto_style = 'WEIGHTED'
+        scene.render.resolution_x = 320
+        scene.render.resolution_y = 180
+        scene.render.film_transparent = True
+        for o in objs:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = objs[0]
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        scene.fp_white_preview = True
+        return scene
+
+    def ink(scene, path, dense):
+        scene.fp_lw_dense = dense
+        scene.render.filepath = str(path)
+        bpy.ops.render.render(write_still=True)
+        img = bpy.data.images.load(str(path))
+        w, h = img.size
+        buf = [0.0] * (w * h * 4)
+        img.pixels.foreach_get(buf)
+        bpy.data.images.remove(img)
+        left = right = 0.0
+        for y in range(h):
+            for x in range(w):
+                i = (y * w + x) * 4
+                if buf[i + 3] < 0.5:
+                    continue
+                v = 1.0 - (buf[i] + buf[i + 1] + buf[i + 2]) / 3
+                if x < w * 0.45:
+                    left += v
+                elif x > w * 0.55:
+                    right += v
+        return left, right
+
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t62_"))
+    try:
+        scene = build()
+        l0, r0 = ink(scene, tmp / "d0.png", 0.0)
+        l1, r1 = ink(scene, tmp / "d8.png", 0.8)
+        assert l0 > 0 and r0 > 0, (l0, r0)
+        assert l1 < l0 * 0.85, f"詰めた板のインクが減らない: {l0:.0f} -> {l1:.0f}"
+        assert r1 > r0 * 0.9, f"離れた箱の輪郭まで薄くなった: {r0:.0f} -> {r1:.0f}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

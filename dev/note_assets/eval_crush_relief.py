@@ -44,6 +44,11 @@ VARIANTS = {
     "relief": dict(fp_far_relief=0.6),
     "fine0":  dict(fp_fine_lines=0.0),
     "fine1":  dict(fp_fine_lines=1.0),
+    "d0":     dict(fp_lw_dense=0.0),
+    "d04":    dict(fp_lw_dense=0.4),
+    "d06":    dict(fp_lw_dense=0.6),
+    "d08":    dict(fp_lw_dense=0.8),
+    "d10":    dict(fp_lw_dense=1.0),
 }
 
 
@@ -52,8 +57,9 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.open_mainfile(filepath=str(BLEND))
     sc = bpy.context.scene
-    sc.render.resolution_x, sc.render.resolution_y = 1280, 720
-    sc.eevee.taa_render_samples = 4
+    res = int(arg("--res", "1280"))
+    sc.render.resolution_x, sc.render.resolution_y = res, res * 9 // 16
+    sc.eevee.taa_render_samples = int(arg("--samples", "4"))
     st.FRAMES = 720
     st.moving_cars(sc)
     base = {k: getattr(sc, k) for v in VARIANTS.values() for k in v}

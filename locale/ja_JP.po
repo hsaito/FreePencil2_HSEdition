@@ -1143,3 +1143,11 @@ msgstr "半分塗りで使う色"
 msgctxt "*"
 msgid "Include this camera in FreePencil's 'Render checked cameras' batch"
 msgstr "FreePencil の「チェックしたカメラをレンダリング」にこのカメラを入れます"
+
+msgctxt "*"
+msgid "Fade dense lines"
+msgstr "詰まった線を薄く"
+
+msgctxt "*"
+msgid "Lighten lines where they are packed together on screen (shutters, railings, fire escapes), so dense detail reads as fine texture instead of a black blob. 0 = off. Updates the drawing right away"
+msgstr "画面上で線が詰まった所(シャッター、手すり、外階段)を薄くし、細かい物が黒い塊にならず細かな模様に見えるようにします。0 = しない。動かすとすぐ絵に反映されます"

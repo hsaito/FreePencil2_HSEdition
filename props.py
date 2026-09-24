@@ -366,6 +366,17 @@ def register_props():
             ),
             default=0.0, min=0.0, max=1.0, step=5, precision=2
         ),
+        "fp_lw_dense": FloatProperty(
+            name="Fade dense lines",
+            description=(
+                "Lighten lines where they are packed together on screen "
+                "(shutters, railings, fire escapes), so dense detail reads as "
+                "fine texture instead of a black blob. 0 = off. Updates the "
+                "drawing right away"
+            ),
+            default=0.0, min=0.0, max=1.0, step=5, precision=2,
+            update=_update_line_weight_live
+        ),
         "fp_lw_far_start": FloatProperty(
             name="Far start",
             description=(
@@ -776,6 +787,7 @@ def unregister_props():
         "fp_include_antialiasing", "fp_line_sensitivity",
         "fp_line_weight", "fp_lw_strength", "fp_lw_density", "fp_lw_crowd",
         "fp_lw_far", "fp_lw_far_sens", "fp_lw_far_fade", "fp_lw_far_start", "fp_lw_far_end",
+        "fp_lw_dense",
         "fp_foliage_clumps", "fp_gap_fill", "fp_lw_ink", "fp_lw_soften",
         "fp_fine_lines", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",
