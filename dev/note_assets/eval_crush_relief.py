@@ -49,6 +49,8 @@ VARIANTS = {
     "d06":    dict(fp_lw_dense=0.6),
     "d08":    dict(fp_lw_dense=0.8),
     "d10":    dict(fp_lw_dense=1.0),
+    "s0":     dict(fp_lw_stripe_fade=0.0),
+    "s1":     dict(fp_lw_stripe_fade=1.0),
 }
 
 
@@ -62,7 +64,7 @@ def main():
     sc.eevee.taa_render_samples = int(arg("--samples", "4"))
     st.FRAMES = 720
     st.moving_cars(sc)
-    base = {k: getattr(sc, k) for v in VARIANTS.values() for k in v}
+    base = {k: getattr(sc, k) for v in VARIANTS.values() for k in v if hasattr(sc, k)}
     for name, vals in VARIANTS.items():
         if ONLY and name not in ONLY:
             continue

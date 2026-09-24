@@ -2917,6 +2917,162 @@ def t62():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("stripe fade: rows of fine strips seen at a grazing angle fade far away, the near end stays")
+def t63():
+    # 長い壁に水平の細い板を詰めて並べ、低い視点から真横に近く見る。
+    # 細かすぎる縞を薄く を上げると、奥(画面の中央寄り)のインクが減り、
+    # 手前(画面の端)はほとんど変わらないこと
+    import math
+    import shutil
+    import tempfile
+
+    def build():
+        bpy.ops.wm.read_homefile(use_empty=True)
+        objs = []
+        for i in range(40):                                  # 板(間隔 8cm、長さ 60m)
+            bpy.ops.mesh.primitive_cube_add(size=1, location=(3.0, 30.0, 0.2 + i * 0.08))
+            o = bpy.context.object
+            o.scale = (0.05, 60.0, 0.04)
+            objs.append(o)
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(3.3, 30.0, 1.8))
+        o = bpy.context.object
+        o.scale = (0.2, 60.0, 3.6)
+        objs.append(o)
+        scene = bpy.context.scene
+        cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+        cam.data.lens = 24
+        cam.location = (0.0, -2.0, 1.6)
+        cam.rotation_euler = (math.radians(88), 0, math.radians(-8))
+        scene.collection.objects.link(cam)
+        scene.camera = cam
+        scene.fp_use_random_seed = False
+        scene.fp_color_seed = 7
+        scene.fp_enable_compositor_view = False
+        scene.fp_auto_detect_aov = False
+        scene.fp_auto_style = 'BACKGROUND'
+        # 縞を薄くの半径は画素で決まる(200% で 12px)。小さく撮ると手前の板まで
+        # 半径より細かくなって薄くなる(320px で実測)。手前の板の間隔が半径より
+        # 十分広くなる大きさで撮る
+        scene.render.resolution_x = 960
+        scene.render.resolution_y = 540
+        scene.render.film_transparent = True
+        for o in objs:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = objs[0]
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        scene.fp_white_preview = True
+        return scene
+
+    def ink(scene, path, v):
+        scene.fp_lw_stripe_fade = v
+        scene.render.filepath = str(path)
+        bpy.ops.render.render(write_still=True)
+        img = bpy.data.images.load(str(path))
+        w, h = img.size
+        buf = [0.0] * (w * h * 4)
+        img.pixels.foreach_get(buf)
+        bpy.data.images.remove(img)
+        far = near = 0.0
+        for y in range(h):
+            for x in range(w):
+                i = (y * w + x) * 4
+                if buf[i + 3] < 0.5:
+                    continue
+                v_ = 1.0 - (buf[i] + buf[i + 1] + buf[i + 2]) / 3
+                if w * 0.45 < x < w * 0.7:
+                    far += v_
+                elif x > w * 0.85:
+                    near += v_
+        return far, near
+
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t63_"))
+    try:
+        scene = build()
+        assert scene.fp_lw_stripe_fade == 1.0, "手描き背景の既定で縞を薄くが入らない"
+        f0, n0 = ink(scene, tmp / "s0.png", 0.0)
+        f1, n1 = ink(scene, tmp / "s1.png", 1.0)
+        assert f0 > 0 and n0 > 0, (f0, n0)
+        assert f1 < f0 * 0.85, f"奥の縞のインクが減らない: {f0:.0f} -> {f1:.0f}"
+        assert n1 > n0 * 0.85, f"手前まで薄くなった: {n0:.0f} -> {n1:.0f}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("stripe fade: a crowded bush of sticks pointing every way does not fade")
+def t64():
+    # 縞を薄く は向きがそろった縞だけに効く。向きがばらばらに詰まった所
+    # (木の葉・細かい部品)を薄くしないこと。向きの項が無い版では、
+    # この茂みの上半分が白く抜けた(dev/note_assets/shot_bush.py の画像)
+    import math
+    import random
+    import shutil
+    import tempfile
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    rnd = random.Random(3)
+    objs = []
+    for _ in range(900):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(
+            rnd.uniform(-1.5, 1.5), 12 + rnd.uniform(-1.5, 1.5), 1.5 + rnd.uniform(-1.2, 1.2)))
+        o = bpy.context.object
+        o.scale = (0.02, 0.18, 0.02)
+        o.rotation_euler = (rnd.uniform(0, math.pi), rnd.uniform(0, math.pi),
+                            rnd.uniform(0, math.pi))
+        objs.append(o)
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 40, 2))
+    o = bpy.context.object
+    o.scale = (20, 0.2, 4)
+    objs.append(o)
+    scene = bpy.context.scene
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.data.lens = 35
+    cam.location = (0.0, -2.0, 1.6)
+    cam.rotation_euler = (math.radians(90), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    scene.fp_use_random_seed = False
+    scene.fp_color_seed = 7
+    scene.fp_enable_compositor_view = False
+    scene.fp_auto_detect_aov = False
+    scene.fp_auto_style = 'BACKGROUND'
+    scene.render.resolution_x = 960
+    scene.render.resolution_y = 540
+    scene.render.film_transparent = True
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    scene.fp_white_preview = True
+
+    def ink(path, v):
+        scene.fp_lw_stripe_fade = v
+        scene.render.filepath = str(path)
+        bpy.ops.render.render(write_still=True)
+        img = bpy.data.images.load(str(path))
+        w, h = img.size
+        buf = [0.0] * (w * h * 4)
+        img.pixels.foreach_get(buf)
+        bpy.data.images.remove(img)
+        tot = 0.0
+        for y in range(int(h * 0.4), int(h * 0.6)):
+            for x in range(int(w * 0.4), int(w * 0.6)):
+                i = (y * w + x) * 4
+                if buf[i + 3] >= 0.5:
+                    tot += 1.0 - (buf[i] + buf[i + 1] + buf[i + 2]) / 3
+        return tot
+
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t64_"))
+    try:
+        b0 = ink(tmp / "b0.png", 0.0)
+        b1 = ink(tmp / "b1.png", 1.0)
+        assert b0 > 0, b0
+        assert b1 > b0 * 0.85, f"向きのばらばらな茂みまで薄くなった: {b0:.0f} -> {b1:.0f}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

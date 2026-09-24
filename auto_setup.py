@@ -128,6 +128,9 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         # 詰まった線を薄く(つぶれ軽減)。密度の高い町で、手すり・網戸・外階段が
         # 黒い塊になった。0.6 で塊が灰色の調子になり、輪郭は黒のまま(1.0 は薄すぎ)
         scene.fp_lw_dense = 0.6 if background else 0.0
+        # 細かすぎる縞を奥ほど薄く。低い視点から水平の線の多い面を見ると、奥が
+        # つぶれて動かすとちらついた(試験場 test_grazing で総当り)
+        scene.fp_lw_stripe_fade = 1.0 if background else 0.0
         # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
         scene.fp_foliage_clumps = 4 if background else 0
         # 細い線(精密の分割)を薄く重ねる。背景は 0.6。線を太くせず本数で

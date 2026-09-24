@@ -688,6 +688,12 @@ def _apply_fine_lines(tree, scene, rl, group_node, comp):
     dst_a = group_node.inputs.get("Alpha")
     if dst_a is not None and dst_a.is_linked and "Alpha" in fine.inputs:
         tree.links.new(dst_a.links[0].from_socket, fine.inputs["Alpha"])
+    # 奥の扱い(深度)を細い線にも効かせる。コピーしたグループには奥ほど
+    # 線を減らす枝が入っているが、深度がつながっておらず効いていなかった
+    # (水平線の試験場で、奥の縞がこちらから出続けた)
+    dst_d = group_node.inputs.get("Depth")
+    if dst_d is not None and dst_d.is_linked and "Depth" in fine.inputs:
+        tree.links.new(dst_d.links[0].from_socket, fine.inputs["Depth"])
     # 絵の入口は白に固定する。"line" 出力はほぼ空で(実測: 最大 0.004)、
     # 線は "sample"(絵の上に線を乗せた合成)に出る。ビューティを入れると
     # 陰影まで一緒に乗算されて面が灰色になるので、白を入れて線だけ取る

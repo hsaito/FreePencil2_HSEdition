@@ -78,12 +78,16 @@ def models():
             if arg("--bone-smooth") is not None:   # ボーンの色をぼかす回数(実験)
                 sc["fp_bone_smooth"] = int(arg("--bone-smooth"))
             bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+            if arg("--stripe") is not None:        # 細かすぎる縞を薄く を上書き(その場で作り直す)
+                sc.fp_lw_stripe_fade = float(arg("--stripe"))
             sc.fp_white_preview = True
             if "--mono" in ARGV:                   # 町と同じモノクロの陰影で見る
                 sc.fp_mono_floor = 0.55
                 sc.fp_preview_mode = 'MONO_LIGHT'
             print(f"@@@ {name} {style} fine={sc.fp_fine_lines} sens={sc.fp_lw_far_sens}", flush=True)
             fp_batch.render_still(sc, OUT / f"{name}_{key}.png", 1)
+            if "--save-blend" in ARGV:
+                bpy.ops.wm.save_as_mainfile(filepath=str(OUT / f"{name}_{key}.blend"), copy=True)
             if "--vcol" in ARGV:
                 for attr in arg("--vcol-attrs", "mecha_color").split(","):
                     vcol_still(sc, meshes, OUT / f"{name}_{key}_{attr.split('_')[0]}.png", attr)

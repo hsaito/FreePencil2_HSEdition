@@ -1151,3 +1151,11 @@ msgstr "詰まった線を薄く"
 msgctxt "*"
 msgid "Lighten lines where they are packed together on screen (shutters, railings, fire escapes), so dense detail reads as fine texture instead of a black blob. 0 = off. Updates the drawing right away"
 msgstr "画面上で線が詰まった所(シャッター、手すり、外階段)を薄くし、細かい物が黒い塊にならず細かな模様に見えるようにします。0 = しない。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "Fade fine stripes"
+msgstr "細かすぎる縞を薄く"
+
+msgctxt "*"
+msgid "Far away, fade rows of lines that are packed finer than the pixels (shutters, louvers, railings seen from a low angle) toward the paper, keeping floor bands and outlines. Stops the far end from crushing and flickering. 0 = off. Updates the drawing right away"
+msgstr "奥で画素より細かく並んだ線(低い視点から見たシャッター・ルーバー・手すり)を紙の色へ薄め、階の帯や輪郭は残します。奥がつぶれたり、動かしたときにちらついたりするのを防ぎます。0 = しない。動かすとすぐ絵に反映されます"

@@ -241,6 +241,7 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         far.prop(scene, "fp_lw_far_sens", text=t("Fewer far lines"), slider=True)
         far.prop(scene, "fp_lw_far_fade", text=t("Lighten far lines"), slider=True)
         far.prop(scene, "fp_lw_dense", text=t("Fade dense lines"), slider=True)
+        far.prop(scene, "fp_lw_stripe_fade", text=t("Fade fine stripes"), slider=True)
         far.prop(scene, "fp_gap_fill", text=t("Fill leaf gaps"))
         sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
                  slider=True)

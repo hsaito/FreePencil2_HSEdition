@@ -97,6 +97,14 @@ DENSE_BLOB = 4          # 線より太い塊とみなす半径(開き)
 DENSE_R = 8
 DENSE_T0 = 0.04
 DENSE_T1 = 0.25
+# 細かすぎる縞を薄める(_stripe_mask): 粗い尺度のぼかし半径(200% の px)、
+# 粗い縁の強さの倍率、縞とみなす詰まり具合(効き始め/最大)
+STRIPE_R = 12
+STRIPE_K = 5.0
+STRIPE_C0 = 0.45
+STRIPE_C1 = 0.70
+STRIPE_H0 = 0.75     # 向きのそろい具合: ここから薄くし始める
+STRIPE_H1 = 0.95     # ここで全部
 
 
 def edges_from_scene(scene) -> list:
@@ -916,6 +924,186 @@ def _descending_ramps(group):
     return out
 
 
+def _coherence(group, src, rp, x, y, made):
+    """色の勾配の向きのそろい具合 0..1(構造テンソル)。縞は 1 に近く、葉は 0 に近い。
+    Jxx=blur(Σdx²) Jyy=blur(Σdy²) Jxy=blur(Σdx·dy)
+    coh = sqrt((Jxx-Jyy)² + 4Jxy²) / (Jxx+Jyy)"""
+    ch = {}
+    for key, dx, dy in (("xp", 1, 0), ("xm", -1, 0), ("yp", 0, 1), ("ym", 0, -1)):
+        t = compat.new_node(group, "CompositorNodeTranslate")
+        t.location = (x, y - len(ch) * 120)
+        t.inputs["X"].default_value = dx
+        t.inputs["Y"].default_value = dy
+        group.links.new(src, t.inputs["Image"])
+        sp = compat.new_node(group, "CompositorNodeSeparateColor")
+        sp.location = (x + 140, y - len(ch) * 120)
+        group.links.new(t.outputs[0], sp.inputs[0])
+        made.extend((t, sp))
+        ch[key] = sp
+    acc = {"xx": None, "yy": None, "xy": None}
+    for c in ("Red", "Green", "Blue"):
+        gx = _math(group, "SUBTRACT", x + 300, y)
+        group.links.new(ch["xp"].outputs[c], gx.inputs[0])
+        group.links.new(ch["xm"].outputs[c], gx.inputs[1])
+        gy = _math(group, "SUBTRACT", x + 300, y - 60)
+        group.links.new(ch["yp"].outputs[c], gy.inputs[0])
+        group.links.new(ch["ym"].outputs[c], gy.inputs[1])
+        made.extend((gx, gy))
+        for k, (u, v) in (("xx", (gx, gx)), ("yy", (gy, gy)), ("xy", (gx, gy))):
+            m = _math(group, "MULTIPLY", x + 380, y)
+            group.links.new(u.outputs[0], m.inputs[0])
+            group.links.new(v.outputs[0], m.inputs[1])
+            made.append(m)
+            if acc[k] is None:
+                acc[k] = m
+            else:
+                a_ = _math(group, "ADD", x + 440, y)
+                group.links.new(acc[k].outputs[0], a_.inputs[0])
+                group.links.new(m.outputs[0], a_.inputs[1])
+                made.append(a_)
+                acc[k] = a_
+    J = {}
+    for k, n in acc.items():
+        b = group.nodes.new("CompositorNodeBlur")
+        b.location = (x + 520, y)
+        _set_blur(b, rp)
+        group.links.new(n.outputs[0], b.inputs[0])
+        bw = compat.new_node(group, "CompositorNodeSeparateColor")
+        bw.location = (x + 600, y)
+        group.links.new(b.outputs[0], bw.inputs[0])
+        made.extend((b, bw))
+        J[k] = bw.outputs["Red"]
+    d = _math(group, "SUBTRACT", x + 700, y)
+    group.links.new(J["xx"], d.inputs[0])
+    group.links.new(J["yy"], d.inputs[1])
+    d2 = _math(group, "MULTIPLY", x + 760, y)
+    group.links.new(d.outputs[0], d2.inputs[0])
+    group.links.new(d.outputs[0], d2.inputs[1])
+    q = _math(group, "MULTIPLY", x + 760, y - 60)
+    group.links.new(J["xy"], q.inputs[0])
+    group.links.new(J["xy"], q.inputs[1])
+    q4 = _math(group, "MULTIPLY_ADD", x + 820, y)
+    group.links.new(q.outputs[0], q4.inputs[0])
+    q4.inputs[1].default_value = 4.0
+    group.links.new(d2.outputs[0], q4.inputs[2])
+    sq = _math(group, "SQRT", x + 880, y)
+    group.links.new(q4.outputs[0], sq.inputs[0])
+    tr = _math(group, "ADD", x + 880, y - 60, b=None)
+    group.links.new(J["xx"], tr.inputs[0])
+    group.links.new(J["yy"], tr.inputs[1])
+    tre = _math(group, "MAXIMUM", x + 940, y - 60, b=1e-6)
+    group.links.new(tr.outputs[0], tre.inputs[0])
+    coh = _math(group, "DIVIDE", x + 1000, y)
+    coh.use_clamp = True
+    group.links.new(sq.outputs[0], coh.inputs[0])
+    group.links.new(tre.outputs[0], coh.inputs[1])
+    made.extend((d, d2, q, q4, sq, tr, tre, coh))
+    return coh
+
+
+def _stripe_mask(group, gi, far, scene):
+    """細かすぎる縞を奥ほど薄めるための「残す割合」(0..1)。強さ 0 なら None。
+
+    水平の線が何段も並ぶ面(シャッター・ルーバー・手すり)を低い視点から
+    見ると、奥で線の間隔が画素を切り、点線・モアレ・黒い斑になり、動かすと
+    ちらついた(試験場 dev/note_assets/test_grazing.py)。色の段差は線の
+    しきい値よりずっと強いので、勾配を割って弱める方法(奥ほど線を減らす、
+    詰まった線を薄く)では消えなかった。色そのものをぼかすとパネルの境まで
+    ぼけて黒い塊になった。総当りで残ったのがこの形:
+        coarse = Sobel(blur(mecha_color, R))     粗い尺度の縁(階の帯・区切り・輪郭)
+        mask   = clamp(|coarse| * K)             粗い縁の上は 1
+        crowd  = 細かい縁の画素の詰まり具合     縞の上だけ 1(1本だけの線は 0)
+        coh    = 勾配の向きのそろい具合(構造テンソル、_coherence)
+        drop   = far>0 * (1 - mask) * crowd * ramp(coh, 0.75..0.95) * 強さ
+        残す   = (1 - drop)^2
+    ぼかし半径より細かい縞だけが平らになって落ちる。手前(奥度 0)は触らない。
+    これをしきい値の後で線の濃さとして掛ける(_fade_after_ramp)。前で掛けると
+    線は出る/出ないの2択で、縞が柱の区切りで縦にスパッと切れた。
+    R=12 は 8 より早めに薄くなり、動かしたときのちらつきが一番少なかった。
+    向きの項が無いと、町の木・電線・ベランダ、BlenderKit のカエデの樹冠や
+    C62 のボイラーまで薄くなった(どれも詰まってはいるが縞ではない)。
+    奥度で絞る(奥度 0.3〜/0.5〜/0.7〜)と中ほどのシャッターのモアレが戻り、
+    詰まりのしきい値を上げても木は残らなかった。縞の上では向きがほぼ 1、
+    葉は 0.5〜0.85 に散る(dev/note_assets/debug_coherence.py の画像)。
+    """
+    k_ = float(getattr(scene, "fp_lw_stripe_fade", 0.0))
+    if k_ <= 0.0 or far is None or "mecha_color" not in gi.outputs:
+        return None
+    pct = max(1, getattr(scene.render, "resolution_percentage", 100))
+    rp = max(1, int(round(STRIPE_R * pct / 200.0)))
+    x, y = gi.location.x + 200, gi.location.y - 1400
+    made = []
+
+    def sobel_bw(src, dx, dy):
+        f = compat.new_node(group, "CompositorNodeFilter")
+        f.location = (x + dx, y + dy)
+        compat.set_filter_type(f, "SOBEL")
+        group.links.new(src, f.inputs["Image"])
+        b = compat.new_node(group, "CompositorNodeRGBToBW")
+        b.location = (x + dx + 140, y + dy)
+        group.links.new(f.outputs[0], b.inputs[0])
+        made.extend((f, b))
+        return b
+    # 粗い尺度の縁
+    bl = group.nodes.new("CompositorNodeBlur")
+    bl.location = (x - 140, y)
+    _set_blur(bl, rp)
+    group.links.new(gi.outputs["mecha_color"], bl.inputs[0])
+    made.append(bl)
+    coarse = sobel_bw(bl.outputs[0], 0, 0)
+    mk = _math(group, "MULTIPLY", x + 400, y, b=STRIPE_K)
+    mk.use_clamp = True
+    group.links.new(coarse.outputs[0], mk.inputs[0])
+    om = _math(group, "SUBTRACT", x + 520, y, a=1.0)
+    group.links.new(mk.outputs[0], om.inputs[1])
+    # 細かい縁の詰まり具合
+    fine = sobel_bw(gi.outputs["mecha_color"], 0, -200)
+    eb = _math(group, "GREATER_THAN", x + 400, y - 200, b=0.05)
+    group.links.new(fine.outputs[0], eb.inputs[0])
+    cbl = group.nodes.new("CompositorNodeBlur")
+    cbl.location = (x + 500, y - 200)
+    _set_blur(cbl, rp)
+    group.links.new(eb.outputs[0], cbl.inputs[0])
+    cs = _math(group, "SUBTRACT", x + 600, y - 200, b=STRIPE_C0)
+    group.links.new(cbl.outputs[0], cs.inputs[0])
+    cd = _math(group, "DIVIDE", x + 680, y - 200, b=STRIPE_C1 - STRIPE_C0)
+    cd.use_clamp = True
+    group.links.new(cs.outputs[0], cd.inputs[0])
+    # 向きがそろった所だけ(縞)。葉や細かい部品は向きがばらばらなので外れる
+    coh = _coherence(group, gi.outputs["mecha_color"], rp, x, y - 700, made)
+    hs = _math(group, "SUBTRACT", x + 700, y - 700, b=STRIPE_H0)
+    group.links.new(coh.outputs[0], hs.inputs[0])
+    hd = _math(group, "DIVIDE", x + 760, y - 700, b=STRIPE_H1 - STRIPE_H0)
+    hd.use_clamp = True
+    group.links.new(hs.outputs[0], hd.inputs[0])
+    hm = _math(group, "MULTIPLY", x + 820, y - 700)
+    group.links.new(cd.outputs[0], hm.inputs[0])
+    group.links.new(hd.outputs[0], hm.inputs[1])
+    made += [hs, hd, hm]
+    cd = hm
+    # 奥度が少しでもある所(手前の物は触らない)
+    fg = _math(group, "MULTIPLY", x + 400, y - 100, b=100.0)
+    fg.use_clamp = True
+    group.links.new(far.outputs[0], fg.inputs[0])
+    d1 = _math(group, "MULTIPLY", x + 640, y)
+    group.links.new(fg.outputs[0], d1.inputs[0])
+    group.links.new(om.outputs[0], d1.inputs[1])
+    d2 = _math(group, "MULTIPLY", x + 760, y - 100)
+    group.links.new(d1.outputs[0], d2.inputs[0])
+    group.links.new(cd.outputs[0], d2.inputs[1])
+    d3 = _math(group, "MULTIPLY", x + 820, y - 100, b=min(1.0, k_))
+    group.links.new(d2.outputs[0], d3.inputs[0])
+    keep_ = _math(group, "SUBTRACT", x + 880, y, a=1.0)
+    group.links.new(d3.outputs[0], keep_.inputs[1])
+    kp = _math(group, "POWER", x + 940, y, b=2.0)
+    group.links.new(keep_.outputs[0], kp.inputs[0])
+    made += [mk, om, eb, cbl, cs, cd, fg, d1, d2, d3, keep_, kp]
+    for n in made:
+        n.label = FAR_LABEL
+    kp["fp_tap"] = "stripe_mask"
+    return kp
+
+
 def apply_far_sens(tree, scene, depth_sock):
     """奥ほど線を減らす: 検出グループの ColorRamp の手前で勾配を割る。
 
@@ -943,6 +1131,13 @@ def apply_far_sens(tree, scene, depth_sock):
         if node is not None and int(src["index"]) < len(node.outputs):
             group.links.new(node.outputs[int(src["index"])], ramp.inputs[0])
         del ramp["fp_far_src"]
+    # 縞を薄める差し込み(しきい値の後)を元の配線へ戻す
+    for mix in [n for n in group.nodes if n.get("fp_post_to") is not None]:
+        src = group.nodes.get(mix.get("fp_post_from", ""))
+        for ent in mix["fp_post_to"].values():
+            to = group.nodes.get(ent["node"])
+            if src is not None and to is not None and int(ent["index"]) < len(to.inputs):
+                group.links.new(src.outputs[0], to.inputs[int(ent["index"])])
     for n in [n for n in group.nodes if n.label == FAR_LABEL]:
         group.nodes.remove(n)
 
@@ -1000,6 +1195,7 @@ def apply_far_sens(tree, scene, depth_sock):
     for n in (edge_f, rel, zf, is_edge, grow, one_m, keep):
         n.label = FAR_LABEL
     fac = keep
+    post_mask = _stripe_mask(group, gi, far, scene)
     count = 0
     for ramp in _descending_ramps(group):
         sock = ramp.inputs[0]
@@ -1017,7 +1213,41 @@ def apply_far_sens(tree, scene, depth_sock):
             group.links.remove(lk)
         group.links.new(mul.outputs[0], sock)
         count += 1
+        if post_mask is not None:
+            _fade_after_ramp(group, ramp, post_mask)
     return count
+
+
+def _fade_after_ramp(group, ramp, mask):
+    """しきい値(ColorRamp)の後で、線を紙の色(白)へ向けて薄める。
+
+    マスクをしきい値の前(勾配)に掛けると、線は出るか出ないかの2択になり、
+    縞が消える境目が柱の区切りに沿って縦にスパッと切れた(試験場の動画)。
+    後ろで線の濃さとして掛けると、細かすぎる縞は奥ほど少しずつ薄くなり、
+    消えるのではなく淡い模様として残る。out' = mix(白, out, mask)
+    """
+    out = ramp.outputs[0]
+    links = [(lk.to_node, lk.to_socket) for lk in out.links
+             if lk.to_node.label != FAR_LABEL]
+    if not links:
+        return None
+    mix = compat.new_node(group, "CompositorNodeMixRGB")
+    mix.location = (ramp.location.x + 200, ramp.location.y - 60)
+    mix.label = FAR_LABEL
+    mix.hide = True
+    compat.set_node_value(mix, "blend_type", "MIX")
+    group.links.new(mask.outputs[0], mix.inputs[0])
+    mix.inputs[1].default_value = (1.0, 1.0, 1.0, 1.0)
+    group.links.new(out, mix.inputs[2])
+    to = {}
+    for i, (to_node, to_sock) in enumerate(links):
+        to[f"{i}"] = {"node": to_node.name, "index": list(to_node.inputs).index(to_sock)}
+        for lk in list(to_sock.links):
+            group.links.remove(lk)
+        group.links.new(mix.outputs[0], to_sock)
+    mix["fp_post_to"] = to
+    mix["fp_post_from"] = ramp.name
+    return mix
 
 
 # ---------------------------------------------------------------- 計測
