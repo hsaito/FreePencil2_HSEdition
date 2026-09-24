@@ -175,8 +175,11 @@ def moving_cars(sc):
             wc.parent = c
             wc.hide_render = wc.hide_viewport = False
         c.rotation_euler = (0, 0, math.radians(-90))     # 正面(-y)を -x へ
+        # 高さは元の車のまま。0 にすると町 v4(車道の面が高い)で車輪が
+        # 道に半分沈んだ(デモの 7 秒目)
+        z0 = src.matrix_world.translation.z
         for f, x in ((1, 22.0), (int(8 * FPS), -26.0)):
-            c.location = (x, -2.6, 0.0)
+            c.location = (x, -2.6, z0)
             c.keyframe_insert("location", frame=f)
         for fc in c.animation_data.action.fcurves:
             for kp in fc.keyframe_points:
@@ -195,7 +198,7 @@ def main():
     n = moving_cars(sc)
     print(f"@@@ 走る車 {n} 台", flush=True)
     if ONLY:
-        if PREVIEW:            # 経路の確認でもプレビューと同じ大きさで撮る
+        if PREVIEW or "--res" in ARGV:   # 経路の確認・撮り直しでも本番と同じ大きさで撮る
             sc.render.resolution_x = RES
             sc.render.resolution_y = RES * 9 // 16
             sc.eevee.taa_render_samples = SAMPLES
