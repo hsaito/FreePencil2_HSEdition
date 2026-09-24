@@ -1,11 +1,18 @@
 """デッサン人形(Auto-Rig Pro)に歩きのアクションを作る。
 
-脚と腕を FK に切り替え、1周 24 フレームの歩きを c_thigh_fk / c_leg_fk /
-c_arm_fk / c_forearm_fk / c_root_master のキーで作る。軸は実測(回して
-手先・足先の位置を読んだ):
+脚と腕を FK に切り替え、歩行の角度曲線(股関節・膝、1周を 0..1 とした標準的な
+歩行の値)からキーを打つ。軸は実測(回して手先・足先の位置を読んだ):
   太もも 左 Z(+ で後ろ)  右 Z(+ で前)     膝 左 Z(+ で曲がる)  右 Z(- で曲がる)
-  腕 左  X(+ で上がる) Z(+ で後ろ)   腕 右  X(+ で上がる) Z(+ で前)
   (右脚の軸は左と鏡。左と同じ符号にすると両脚が同じ向きに振れた)
+  腕  X(+ で上がる。-82 で体の横に下りる。-72 だと手が横に開き、-85 だと腰に付く)
+      下ろした腕の前後の振りは Y(左は - で前、右は + で前)。以前は Z で振って
+      いたが、下ろした腕では Z はねじれになり、振りが不自然だった(指摘あり)
+  肘  Z(左は - で前へ曲がる、右は + で前へ)
+
+以前の歩きは太ももを ±24 度の正弦で振っていて、後ろ脚が伸び切った大股
+(突き出し)になった。歩行曲線に替えた。
+
+進む速さは、立脚の足が地面を滑らないように実測して決める(measure_stride)。
 
 単体で確かめる:
   blender -b --factory-startup --python dessin_walk.py -- --check [--out out/dessin/walk]
@@ -19,8 +26,36 @@ from pathlib import Path
 
 import bpy
 
-CYCLE = 24                # 1周のフレーム数(1 秒)
-STRIDE = 1.3              # 1周で進む距離(m)。2歩
+CYCLE = 26                # 1周のフレーム数(24fps で 1.08 秒 = 1 分に 110 歩)
+# 1周で進む距離(m)。立脚の足が滑らない値を measure_stride で測った
+STRIDE = 1.00
+
+# 歩行の角度曲線(左脚、t=0 がかかと接地)。度
+#   股関節: + で前へ曲げる(屈曲)、- で後ろへ(伸展)
+#   膝: + で曲げる
+HIP = ((0.00, 24.0), (0.12, 20.0), (0.30, 4.0), (0.50, -10.0), (0.62, -8.0),
+       (0.75, 12.0), (0.87, 27.0), (1.00, 24.0))
+KNEE = ((0.00, 4.0), (0.12, 16.0), (0.30, 8.0), (0.45, 4.0), (0.60, 36.0),
+        (0.72, 58.0), (0.85, 30.0), (0.97, 4.0), (1.00, 4.0))
+
+
+def _curve(table, t):
+    """周期的な折れ線を、なめらかにつないで読む(Catmull-Rom)。"""
+    t = t % 1.0
+    xs = [p[0] for p in table]
+    ys = [p[1] for p in table]
+    i = 0
+    for i in range(len(xs) - 1):
+        if xs[i] <= t <= xs[i + 1]:
+            break
+    n = len(xs) - 1                         # 最後の点は最初の点と同じ
+
+    def y(k):
+        return ys[k % n]
+    p0, p1, p2, p3 = y(i - 1), y(i), y(i + 1), y(i + 2)
+    u = (t - xs[i]) / max(xs[i + 1] - xs[i], 1e-6)
+    return 0.5 * ((2 * p1) + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u
+                  + (-p0 + 3 * p1 - 3 * p2 + p3) * u * u * u)
 
 
 def _key(pb, frame, rot=None, loc=None):
@@ -42,26 +77,49 @@ def make_walk(arm, name="Walk"):
     arm.animation_data_create()
     act = bpy.data.actions.new(name)
     arm.animation_data.action = act
-    for f in range(0, CYCLE + 1, 2):
-        p = 2 * math.pi * f / CYCLE
-        for s, ph, arm_sign, leg_sign in (("l", 0.0, -1.0, 1.0), ("r", math.pi, 1.0, -1.0)):
-            q = p + ph
-            fwd = 24.0 * math.sin(q)                      # 太ももの前への振り
-            knee = 4.0 + 50.0 * max(0.0, math.cos(q)) ** 1.5   # 振り出しの途中で最大
-            _key(pb[f"c_thigh_fk.{s}"], f + 1, rot=(0.0, 0.0, -leg_sign * fwd))
+    for f in range(0, CYCLE + 1):
+        t = f / CYCLE
+        for s, ph, leg_sign in (("l", 0.0, 1.0), ("r", 0.5, -1.0)):
+            ts = t + ph
+            hip = _curve(HIP, ts)
+            knee = _curve(KNEE, ts)
+            _key(pb[f"c_thigh_fk.{s}"], f + 1, rot=(0.0, 0.0, -leg_sign * hip))
             _key(pb[f"c_leg_fk.{s}"], f + 1, rot=(0.0, 0.0, leg_sign * knee))
-            # 腕は下ろして、同じ側の脚と逆に振る
-            swing = -16.0 * math.sin(q)                   # 腕の前への振り
-            _key(pb[f"c_arm_fk.{s}"], f + 1, rot=(-72.0, 0.0, arm_sign * swing))
-            _key(pb[f"c_forearm_fk.{s}"], f + 1, rot=(0.0, 0.0, arm_sign * (18.0 + 8.0 * max(0.0, math.sin(q)))))
-        # 腰の上下: 脚が真下を通るとき高く、開いたとき低い(1周で2回)
-        _key(pb["c_root_master.x"], f + 1, loc=(0.0, 0.0, -0.025 * abs(math.sin(p))))
+            # 腕は体の横に下ろし、同じ側の脚と逆に前後へ振る(脚が前なら腕は後ろ)。
+            # 前へは大きく、後ろへは小さく
+            ph_arm = -hip / 27.0                      # + で腕が前
+            swing = 15.0 * ph_arm if ph_arm > 0 else 8.0 * ph_arm
+            fwd_sign = -1.0 if s == "l" else 1.0      # 前へ振る Y の符号
+            _key(pb[f"c_arm_fk.{s}"], f + 1, rot=(-82.0, fwd_sign * swing, 0.0))
+            elbow = 12.0 + 14.0 * max(0.0, ph_arm)    # いつも少し曲げ、前ほど深く
+            _key(pb[f"c_forearm_fk.{s}"], f + 1, rot=(0.0, 0.0, fwd_sign * elbow))
+        # 腰の上下: 立脚の真ん中(t=0.25, 0.75)で高く、両脚が開く接地で低い
+        bob = -0.022 * (0.5 + 0.5 * math.cos(4 * math.pi * t))
+        _key(pb["c_root_master.x"], f + 1, loc=(0.0, 0.0, bob))
     for fc in act.fcurves:
         for kp in fc.keyframe_points:
-            kp.interpolation = "BEZIER"
+            kp.interpolation = "LINEAR"            # 毎フレーム打っている
         if not any(m.type == "CYCLES" for m in fc.modifiers):
             fc.modifiers.new("CYCLES")
     return act
+
+
+def measure_stride(arm):
+    """立脚中に足が体に対して後ろへ動く距離から、1周で進む距離を測る。
+
+    足が地面で止まって見えるには、体が(立脚中の足の後ろへの動き)と同じだけ
+    前へ進めばよい。左足の t=0.05..0.45(かかと接地のあと〜蹴り出しの前)を読む。
+    """
+    sc = bpy.context.scene
+    pb = arm.pose.bones
+
+    def foot_y(frame):
+        sc.frame_set(frame)
+        return (arm.matrix_world @ pb["foot.l"].head).y
+    f0 = 1 + round(0.05 * CYCLE)
+    f1 = 1 + round(0.45 * CYCLE)
+    back = foot_y(f1) - foot_y(f0)                  # 正面は -y なので後ろは +y
+    return back / (f1 - f0) * CYCLE
 
 
 def _check():
@@ -73,6 +131,8 @@ def _check():
     sc = bpy.context.scene
     arm = bpy.data.objects["man_rig"]
     make_walk(arm)
+    stride = measure_stride(arm)
+    print(f"@@@ 立脚の足が滑らない 1周の距離 {stride:.3f} m(STRIDE={STRIDE})", flush=True)
     from mathutils import Vector
     sc.render.engine = "BLENDER_WORKBENCH"
     sc.render.resolution_x, sc.render.resolution_y = 640, 640
@@ -88,9 +148,10 @@ def _check():
         cam.location = loc
         cam.rotation_euler = (Vector((0, 0, 0.85)) - Vector(loc)).to_track_quat("-Z", "Y").to_euler()
         sc.camera = cam
-        for f in (1, 7, 13, 19):
+        for k in range(8):
+            f = 1 + round(k * CYCLE / 8)
             sc.frame_set(f)
-            sc.render.filepath = str(out / f"{view}_f{f:02d}.png")
+            sc.render.filepath = str(out / f"{view}_k{k}.png")
             bpy.ops.render.render(write_still=True)
     print(f"@@@ done {out}", flush=True)
 

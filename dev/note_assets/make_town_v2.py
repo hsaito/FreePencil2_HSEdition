@@ -837,7 +837,9 @@ def duplicate(o, x, y, rot_deg, scale=1.0, wheels=()):
 DOLL_SRC = HERE / "out" / "dessin" / "dessin170_src.blend"
 DOLL_OBJS = ("man_grp", "man_rig", "rig_ui", "head_rig", "foot_rig", "hand_rig",
              "body", "foot", "head", "hand")
-WALK_SPEED = 1.3        # m/s(dessin_walk.STRIDE / 1秒)
+# m/s。歩きの1周で進む距離 / 1周の時間(立脚の足が滑らない速さ)
+import dessin_walk as _dw  # noqa: E402
+WALK_SPEED = _dw.STRIDE * 24.0 / _dw.CYCLE
 SIDEWALK_TOP = 0.15     # 歩道の天面(street() の箱の高さ)
 # 人形の足を置く高さ。歩道の天面に、歩きの腰の上下(最大 2.5cm 下がる)ぶんの
 # 余裕を足す。0 に置いていたときは足が歩道に 15cm 埋まっていた
