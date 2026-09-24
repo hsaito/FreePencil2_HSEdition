@@ -129,37 +129,96 @@ def spin_wheels(car, dist, f0, f1):
                 kp.interpolation = "LINEAR"
 
 
-def moving_cars(sc):
-    """走る車: 大通りの車線にいる車を全部走らせる(止まった車と重ならないように)。
+STOP_N = 136.0     # 北行きの停止線(突き当たりの高層 y=145 の手前)
+STOP_S = -62.0     # 南行きの停止線(通りの南端 y=-72 の手前)
+GAP = 7.0          # 並んで止まる車の中心の間隔(車長 4.4m + 2.6m)
+DECEL = 3.5        # ブレーキ m/s^2
+QUEUE_MAX = 6      # 1 車線に並べる台数(これより後ろの車は置かない)
 
-    半分を止めておくと、走る車が止まった車に重なった(実測)。車線の車は
-    全部同じ速さで走らせ(追い越しが無いので重ならない)、横切る車が
-    交差点を通る 2〜5.5 秒の間に交差点(y -8..4)へ来る車は手前へずらす。
+
+def drive(s_stop, v, t):
+    """t 秒後に進んだ距離。速さ v で走り、s_stop でちょうど止まるように減速する。"""
+    if s_stop <= 0.0:
+        return 0.0
+    brake = v * v / (2.0 * DECEL)
+    if s_stop < brake:                  # 近すぎる: はじめから減速
+        v = math.sqrt(2.0 * DECEL * s_stop)
+        brake = s_stop
+    t0 = (s_stop - brake) / v
+    if t < t0:
+        return v * t
+    tau = min(t - t0, v / DECEL)
+    return s_stop - brake + v * tau - 0.5 * DECEL * tau * tau
+
+
+def spin_wheels_path(car, dists, f0):
+    """車輪を 1 コマごとの進みに合わせて回す(止まれば止まる)。
+    1 コマ 25 度までに抑える倍率は一番速い所で決め、全体に掛ける。"""
+    steps = [b - a for a, b in zip(dists, dists[1:])]
+    for w in car.children:
+        if not w.name.startswith("wheel_"):
+            continue
+        r = max(float(w.get("fp_r", 0.3)) * car.matrix_world.to_scale().x, 1e-3)
+        k = min(1.0, math.radians(25.0) / max(max(steps, default=0.0) / r, 1e-6))
+        base = w.rotation_euler.x
+        ang = base
+        w.rotation_euler.x = ang
+        w.keyframe_insert("rotation_euler", index=0, frame=f0)
+        for n, ds in enumerate(steps):
+            ang += ds / r * k
+            w.rotation_euler.x = ang
+            w.keyframe_insert("rotation_euler", index=0, frame=f0 + n + 1)
+
+
+def hide_car(o):
+    for ob in [o] + list(o.children):        # 車輪も一緒に消す
+        ob.hide_render = True
+        ob.hide_viewport = True
+
+
+def moving_cars(sc):
+    """走る車: 大通りの車線の車を走らせ、通りの端の手前で減速して並んで止める。
+
+    同じ速さのまま走らせ続けると 30 秒で 270m 進み、突き当たりの高層に
+    突っ込んだ(デモ v4 の奥)。車線ごとに進む向きの先頭から順に、停止線から
+    GAP ずつ後ろを止まる位置にする。同じ車線は同じ速さ・同じ減速なので、
+    はじめに重なっていなければ走っている間も GAP より詰まらない。
+    横切る車が交差点(y -8..4)を通る 2〜5.5 秒の間にそこへ来る車は置かない。
     """
     cars = [o for o in sc.objects if o.type == "MESH" and o.name.startswith("asset_")
             and any(k in o.name for k in ("police", "toyota", "lancia", "hyundai", "audi", "mclaren"))
             and not o.hide_viewport and abs(o.matrix_world.translation.x) < ROAD]
+    src_cross = cars[0] if cars else None
     moved = 0
-    for o in cars:
-        x = o.matrix_world.translation.x
-        speed = 9.0 if x < 0 else -8.0          # m/s。x<0 は北向き(左側通行、正面は +y に回してある)
-        y0 = o.matrix_world.translation.y
-        # 横切る車が交差点を通る間(2〜5.5秒)に交差点へ来る車は外す
-        # (ずらすと隣の車に重なる)
-        if any(-8.0 < y0 + speed * t < 4.0 for t in (2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5)):
-            for ob in [o] + list(o.children):        # 車輪も一緒に消す
-                ob.hide_render = True
-                ob.hide_viewport = True
-            continue
-        for f in (1, FRAMES):
-            o.location.y = y0 + speed * (f - 1) / FPS
-            o.keyframe_insert("location", frame=f)
-        if o.animation_data and o.animation_data.action:
-            for fc in o.animation_data.action.fcurves:
-                for kp in fc.keyframe_points:
-                    kp.interpolation = "LINEAR"
-        spin_wheels(o, abs(speed) * (FRAMES - 1) / FPS, 1, FRAMES)
-        moved += 1
+    for north in (True, False):
+        lane = [o for o in cars if (o.matrix_world.translation.x < 0) == north]
+        v = 9.0 if north else 8.0
+        sgn = 1.0 if north else -1.0
+        stop = STOP_N if north else STOP_S
+        lane.sort(key=lambda o: -sgn * o.matrix_world.translation.y)   # 先頭から
+        k = 0
+        for o in lane:
+            y0 = o.matrix_world.translation.y
+            s_stop = sgn * (stop - sgn * GAP * k - y0)     # 後ろの車ほど停止線の手前
+            ys = [y0 + sgn * drive(s_stop, v, f / FPS) for f in range(FRAMES)]
+            in_cross = any(-8.0 < ys[int(t * FPS)] < 4.0
+                           for t in (2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5))
+            if k >= QUEUE_MAX or s_stop < 0.0 or in_cross:
+                hide_car(o)
+                continue
+            k += 1
+            o.animation_data_clear()
+            for f, y in enumerate(ys):
+                o.location.y = y
+                o.keyframe_insert("location", index=1, frame=f + 1)
+            spin_wheels_path(o, [abs(y - y0) for y in ys], 1)
+            for ob in [o] + [w for w in o.children if w.name.startswith("wheel_")]:
+                if ob.animation_data and ob.animation_data.action:
+                    for fc in ob.animation_data.action.fcurves:
+                        for kp in fc.keyframe_points:
+                            kp.interpolation = "LINEAR"
+            moved += 1
+    cars = [src_cross] if src_cross else []
     # カット A で手前を横切る車を 1 台、横町に置いて走らせる
     if cars:
         src = cars[0]
@@ -168,6 +227,7 @@ def moving_cars(sc):
         # copy() はアクションを共有する。そのままキーを打つと元の車も同じ
         # 経路を走り、2台が同じ場所に重なった(実測: 3秒の交差点)
         c.animation_data_clear()
+        c.hide_render = c.hide_viewport = False      # 元の車が置かれない車でも出す
         for w in [w for w in src.children if w.name.startswith("wheel_")]:
             wc = w.copy()                            # 車輪も付け替える(子は copy されない)
             sc.collection.objects.link(wc)
