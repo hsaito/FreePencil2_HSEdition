@@ -493,6 +493,7 @@ def street(rng):
         if any(abs(y - c) < XW + 3 for c in CROSS):
             y += 4
         px = ROAD + 0.9
+        OBSTACLES.append((px, y, 0.35))
         S.cyl(px, y, 5.5, 0.16, 11.0, 10)
         S.box(px, y, 9.6, 0.14, 2.6, 0.14)
         S.box(px, y, 10.4, 0.14, 2.0, 0.14)
@@ -509,6 +510,7 @@ def street(rng):
         if any(abs(y - c) < XW + 3 for c in CROSS):
             continue
         lx = -(ROAD + 0.8)
+        OBSTACLES.append((lx, y, 0.2))
         S.cyl(lx, y, 3.0, 0.08, 6.0, 8)
         S.bar((lx, y, 5.9), (lx + 1.6, y, 6.3), 0.05)
         S.box(lx + 1.7, y, 6.25, 0.5, 0.28, 0.2)
@@ -516,13 +518,19 @@ def street(rng):
     for cy in CROSS:
         for sx, sy in ((1, -1), (-1, 1), (1, 1), (-1, -1)):
             px, py = sx * (ROAD + 0.7), cy + sy * (XW + 0.7)
+            OBSTACLES.append((px, py, 0.3))
             S.cyl(px, py, 2.9, 0.09, 5.8, 8)
             ax = px - sx * 3.2
-            S.bar((px, py, 5.6), (ax, py, 5.6), 0.06)
-            S.box(ax + sx * 0.6, py, 5.2, 1.2, 0.35, 0.4)
+            arm_z = 5.6
+            S.bar((px, py, arm_z), (ax, py, arm_z), 0.06)
+            # 灯器の箱: 上面を腕の下端に付ける(腕の半径 0.06)
+            box_h, box_d = 0.4, 0.35
+            box_z = arm_z - 0.06 - box_h / 2 + 0.01
+            S.box(ax + sx * 0.6, py, box_z, 1.2, box_d, box_h)
+            # 3灯は箱(幅 1.2)の中央に等間隔(0.2 / 0.6 / 1.0)。前面(-sy)に貼る
             for k in range(3):
-                S.cyl(ax + sx * (0.2 + 0.4 * k) - sx * 0.2, py - sy * 0.22, 5.2, 0.13, 0.06, 10,
-                      rot=(math.radians(90), 0, 0))
+                S.cyl(ax + sx * (0.2 + 0.4 * k), py - sy * (box_d / 2 + 0.02), box_z,
+                      0.13, 0.04, 10, rot=(math.radians(90), 0, 0))
             S.box(px, py, 3.2, 0.3, 0.3, 0.6)                                   # 押しボタン箱
         for sx in (-1, 1):
             for sy in (-1, 1):
@@ -536,11 +544,14 @@ def street(rng):
     for y in (-30.0, 22.0, 46.0, 96.0):
         sx = rng.choice((-1, 1))
         x = sx * (ROAD + 2.9)
+        OBSTACLES.append((x, y, 0.75))
         S.box(x, y, 0.92, 0.8, 1.05, 1.84)
         S.box(x - sx * 0.42, y, 1.05, 0.04, 0.85, 1.2)
     for y in (12.0, 88.0):
+        OBSTACLES.append((-(ROAD + 1.0), y, 0.5))
         S.cyl(-(ROAD + 1.0), y, 1.3, 0.04, 2.6, 8)
         S.cyl(-(ROAD + 1.0), y, 2.4, 0.45, 0.06, 16, rot=(math.radians(90), 0, 0))
+    OBSTACLES.append((ROAD + 1.2, 30.0, 0.35))
     S.cyl(ROAD + 1.2, 30.0, 0.55, 0.22, 1.1, 12)
     S.box(ROAD + 1.2, 30.0, 1.2, 0.5, 0.5, 0.2)
     # 植樹枡(街路樹の根元の縁石)
@@ -549,6 +560,7 @@ def street(rng):
             continue
         for sx in (-1, 1):
             x = sx * (ROAD + 1.9)
+            OBSTACLES.append((x, y, 1.3))          # 植樹枡 + 幹 + 低い枝
             S.box(x, y, 0.19, 1.6, 1.6, 0.08)
             S.box(x, y, 0.1, 1.3, 1.3, 0.12)
     # 通りをまたぐ電線(電柱から反対側の街灯・建物へ)
@@ -645,6 +657,9 @@ def layout(rng):
 
 KONBINI_LOTS = []
 PARKING_LOTS = []
+# 歩道の上の障害物 (x, y, 半径 m)。人形はこれを避けて歩く区間を決める。
+# 置いていなかったときは街路樹・電柱・自販機に人形が埋まった(実測)
+OBSTACLES = []
 
 
 # ---------------------------------------------------------------- アセット
@@ -823,6 +838,10 @@ DOLL_SRC = HERE / "out" / "dessin" / "dessin170_src.blend"
 DOLL_OBJS = ("man_grp", "man_rig", "rig_ui", "head_rig", "foot_rig", "hand_rig",
              "body", "foot", "head", "hand")
 WALK_SPEED = 1.3        # m/s(dessin_walk.STRIDE / 1秒)
+SIDEWALK_TOP = 0.15     # 歩道の天面(street() の箱の高さ)
+# 人形の足を置く高さ。歩道の天面に、歩きの腰の上下(最大 2.5cm 下がる)ぶんの
+# 余裕を足す。0 に置いていたときは足が歩道に 15cm 埋まっていた
+DOLL_Z = SIDEWALK_TOP + 0.02
 FRAMES_TOTAL = 720      # shoot_town_v2 の尺と同じ(30 秒 x 24)
 
 
@@ -885,6 +904,11 @@ def walkers(rng):
             b = a + length
             if any(a < bb + 1.5 and aa - 1.5 < b for aa, bb in taken[x]):
                 continue
+            # 障害物: 列との x の差が(半径 + 人の半幅 0.35)未満なら、その y の
+            # 前後を通れない
+            if any(abs(ox - x) < r + 0.35 and a - r - 0.35 < oy < b + r + 0.35
+                   for ox, oy, r in OBSTACLES):
+                continue
             taken[x].append((a, b))
             grp, rig, meshes = load_doll()
             # 往復: 端に着いたら向きを変える(向きは一瞬で切り替える)
@@ -899,7 +923,7 @@ def walkers(rng):
                     keys.append((f, y, d))
             keys.append((FRAMES_TOTAL, y, d))
             for f, yy, dd in keys:
-                grp.location = (x, yy, 0.0)
+                grp.location = (x, yy, DOLL_Z)
                 grp.keyframe_insert("location", frame=f)
                 grp.rotation_euler = (0.0, 0.0, math.radians(180.0 if dd > 0 else 0.0))
                 grp.keyframe_insert("rotation_euler", frame=f)
@@ -991,13 +1015,14 @@ def assets(rng):
         for k in range(3):
             if rng.random() < 0.7:
                 put(rng.choice(cars), sx * (CURB + setback / 2), cy - 6 + k * 3.0, 90 + rng.uniform(-3, 3))
-    # 人: 歩道を歩くデッサン人形(リグ付き = キャラのざっくり塗り + ボーン塗り)
-    if "people" not in SKIP:
-        made.extend(walkers(rng))
-    # 人は歩道だけ(横断歩道の上には置かない)
     for y in (12.5, 88.5):
         put("manchester-acacia", -(ROAD + 2.4), y + 2.5, 90)
         put("trash_can", -(ROAD + 2.6), y + 5.0, 0)
+        OBSTACLES.append((-(ROAD + 2.4), y + 2.5, 1.0))
+        OBSTACLES.append((-(ROAD + 2.6), y + 5.0, 0.45))
+    # 人: 歩道を歩くデッサン人形(リグ付き = キャラのざっくり塗り + ボーン塗り)
+    if "people" not in SKIP:
+        made.extend(walkers(rng))
     return made
 
 
