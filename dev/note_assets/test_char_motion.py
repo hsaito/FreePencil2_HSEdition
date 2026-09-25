@@ -68,8 +68,8 @@ def setup():
     cam = bpy.data.objects.new("C", cd)
     sc.collection.objects.link(cam)
     sc.camera = cam
-    tgt = Vector((0.0, 0.0, 0.82))
-    d = 4.8
+    tgt = Vector((0.0, 0.0, float(arg("--tgt-z", "0.82"))))
+    d = float(arg("--dist", "4.8"))
     for f in range(sc.frame_start, sc.frame_end + 1):
         s = (f - sc.frame_start) / max(1, n - 1)
         e = 0.5 - 0.5 * math.cos(s * math.pi)
@@ -145,6 +145,9 @@ def main():
     sc, meshes = setup()
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "char_motion.blend"))
     render(sc, "line", ONLY)
+    if "--line-only" in ARGV:              # デモ用: 線画だけ
+        print("@@@ 完了", flush=True)
+        return
     # ボーンの塗りを素通しで(コンポジタを切り、材質を差し替える)
     mat = bone_material()
     for o in meshes:
