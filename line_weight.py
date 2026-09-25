@@ -105,6 +105,8 @@ STRIPE_C0 = 0.45
 STRIPE_C1 = 0.70
 STRIPE_H0 = 0.75     # 向きのそろい具合: ここから薄くし始める
 STRIPE_H1 = 0.95     # ここで全部
+STRIPE_BLUR = 12     # 薄める先: 線の絵をこの半径(200% 基準 px)でぼかした物
+STRIPE_LIFT = 0.6    # そのぼかした物を白へ寄せる割合
 
 
 def edges_from_scene(scene) -> list:
@@ -1214,17 +1216,18 @@ def apply_far_sens(tree, scene, depth_sock):
         group.links.new(mul.outputs[0], sock)
         count += 1
         if post_mask is not None:
-            _fade_after_ramp(group, ramp, post_mask)
+            _fade_after_ramp(group, ramp, post_mask, scene)
     return count
 
 
-def _fade_after_ramp(group, ramp, mask):
-    """しきい値(ColorRamp)の後で、線を紙の色(白)へ向けて薄める。
+def _fade_after_ramp(group, ramp, mask, scene=None):
+    """しきい値(ColorRamp)の後で、線をぼかして薄めた物へ寄せる。
 
     マスクをしきい値の前(勾配)に掛けると、線は出るか出ないかの2択になり、
     縞が消える境目が柱の区切りに沿って縦にスパッと切れた(試験場の動画)。
     後ろで線の濃さとして掛けると、細かすぎる縞は奥ほど少しずつ薄くなり、
-    消えるのではなく淡い模様として残る。out' = mix(白, out, mask)
+    消えるのではなく淡い模様として残る。
+    out' = mix(mix(blur(out), 白, 0.6), out, mask)
     """
     out = ramp.outputs[0]
     links = [(lk.to_node, lk.to_socket) for lk in out.links
@@ -1238,6 +1241,27 @@ def _fade_after_ramp(group, ramp, mask):
     compat.set_node_value(mix, "blend_type", "MIX")
     group.links.new(mask.outputs[0], mix.inputs[0])
     mix.inputs[1].default_value = (1.0, 1.0, 1.0, 1.0)
+    # 薄める先は白ではなく、線の絵をぼかして白へ 60% 寄せた物。縞が淡い灰色の
+    # もやになる。白へ薄めた版は縞が白く抜けた所がまだらに見えた。ぼかしだけの版は
+    # モアレの黒い斑が灰色の面に残った(ぼかしてもインクの量は変わらないので、
+    # 縞より広いモアレのうねりは消えない)。12px+60% と 24px+50% はほぼ同じで、
+    # ちらつきは白へ薄めた版と同じ(試験場の動画)。にじみの狭い 12px を採る
+    pct = max(1, getattr(scene.render, "resolution_percentage", 100)) if scene else 100
+    bl = group.nodes.new("CompositorNodeBlur")
+    bl.location = (ramp.location.x + 200, ramp.location.y - 140)
+    _set_blur(bl, max(1, int(round(STRIPE_BLUR * pct / 200.0))))
+    bl.label = FAR_LABEL
+    bl.hide = True
+    group.links.new(out, bl.inputs[0])
+    lm = compat.new_node(group, "CompositorNodeMixRGB")
+    compat.set_node_value(lm, "blend_type", "MIX")
+    lm.location = (ramp.location.x + 200, ramp.location.y - 200)
+    lm.label = FAR_LABEL
+    lm.hide = True
+    lm.inputs[0].default_value = STRIPE_LIFT
+    group.links.new(bl.outputs[0], lm.inputs[1])
+    lm.inputs[2].default_value = (1.0, 1.0, 1.0, 1.0)
+    group.links.new(lm.outputs[0], mix.inputs[1])
     group.links.new(out, mix.inputs[2])
     to = {}
     for i, (to_node, to_sock) in enumerate(links):
