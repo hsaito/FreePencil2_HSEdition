@@ -380,11 +380,11 @@ def register_props():
         "fp_lw_stripe_fade": FloatProperty(
             name="Fade fine stripes",
             description=(
-                "Far away, fade rows of lines that are packed finer than the "
+                "Far away, blur rows of lines that are packed finer than the "
                 "pixels (shutters, louvers, railings seen from a low angle) "
-                "toward the paper, keeping floor bands and outlines. Stops the "
-                "far end from crushing and flickering. 0 = off. Updates the "
-                "drawing right away"
+                "into a light haze, keeping floor bands and outlines. Only rows "
+                "running one way are touched, not leaves. Stops the far end from "
+                "crushing and flickering. 0 = off. Updates the drawing right away"
             ),
             default=0.0, min=0.0, max=1.0, step=5, precision=2,
             update=_update_line_weight_live
@@ -774,6 +774,30 @@ def register_props():
         else:
             logger.info(f"Property already exists: {prop_name}")
 
+    # 手描き系の仕上がりでの塗り方(オブジェクト単位)。自動はリグの付き方で
+    # 見分ける(vertex_color.paint_as)。リグ付きロボットをメカに、リグ無しの
+    # 人をキャラにしたいときに上書きする
+    if not hasattr(bpy.types.Object, "fp_paint_as"):
+        bpy.types.Object.fp_paint_as = EnumProperty(
+            name="Paint as",
+            description=(
+                "How STEP1 paints this object in the hand-drawn finishes "
+                "(Character / Background). Precise always splits by angle"
+            ),
+            items=[
+                ('AUTO', "Auto",
+                 "Rigged objects are painted as characters, unless most "
+                 "vertices follow a single bone (a robot)"),
+                ('MECHA', "Mecha",
+                 "Split by edge angle and keep every panel line, even when "
+                 "rigged"),
+                ('CHARA', "Character",
+                 "Coarse paint: one color per part, joints blended by bone "
+                 "weights. Also works without a rig"),
+            ],
+            default='AUTO'
+        )
+
     # カメラ一括レンダリング対象のチェック(オブジェクト単位)
     if not hasattr(bpy.types.Object, "fp_cam_render"):
         bpy.types.Object.fp_cam_render = BoolProperty(
@@ -830,8 +854,9 @@ def unregister_props():
         else:
             logger.info(f"Property does not exist: {prop_name}")
 
-    if hasattr(bpy.types.Object, "fp_cam_render"):
-        try:
-            delattr(bpy.types.Object, "fp_cam_render")
-        except AttributeError:
-            logger.exception("Failed to clear property: fp_cam_render")
+    for prop_name in ("fp_cam_render", "fp_paint_as"):
+        if hasattr(bpy.types.Object, prop_name):
+            try:
+                delattr(bpy.types.Object, prop_name)
+            except AttributeError:
+                logger.exception(f"Failed to clear property: {prop_name}")

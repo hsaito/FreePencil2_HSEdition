@@ -2125,6 +2125,7 @@ def t49():
     # キャラは奥の扱いも葉の房も入れない
     assert scene.fp_lw_far == 0.0 and scene.fp_lw_far_sens == 1.0 \
         and scene.fp_lw_far_fade == 0.0 and scene.fp_foliage_clumps == 0, "キャラに背景の特殊処理が入った"
+    assert abs(scene.fp_lw_strength - 0.6) < 1e-6, f"キャラの強弱がほんのり(0.6)でない: {scene.fp_lw_strength}"
 
     # 手描き背景 = キャラ + 奥の扱い + 葉の房
     scene.fp_auto_style = 'BACKGROUND'
@@ -2325,6 +2326,9 @@ def t51():
         bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
         assert scene.fp_lw_far_end > scene.fp_lw_far_start > 0.0, (
             f"奥の距離が測られていない: {scene.fp_lw_far_start} .. {scene.fp_lw_far_end}")
+        # 奥ほど細くの仕組みを見るので、太い線(強さ 1.0)で測る。キャラの既定は
+        # ほんのり(0.6)で、太さの差が小さく測りにくい
+        scene.fp_lw_strength = 1.0
         scene.fp_lw_far = far
         bpy.ops.freepencil2.link_button()
         scene.fp_white_preview = True
@@ -3071,6 +3075,86 @@ def t64():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("paint as: a rigid-skinned robot (many bones) is painted as mecha; overrides work")
+def t65():
+    # リグ付きでも、頂点がボーン1本に固定された物(ロボット)は、手描き系の
+    # 仕上がりでもメカの塗り(角度で分ける)にする。リグ付きのザクがざっくり
+    # 塗りで胴体1色になり、パネルの線が消えた。オブジェクトの「塗り方」で
+    # 上書きでき、リグの無い物もキャラ(ざっくり塗り)にできること
+    import numpy as np
+
+    def build(rigged=True):
+        bpy.ops.wm.read_homefile(use_empty=True)
+        parts = []
+        for i in range(10):                     # 箱 10 個 = 部品 10 個
+            bpy.ops.mesh.primitive_cube_add(size=0.8, location=(i * 1.0, 0, 0))
+            # 面を割っておく。1 面 1 枚の箱は島/面が 1 になり、「切れすぎ」の
+            # 抑えで角度の分割が取りやめになる(実物のメカは面が多い)
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.subdivide(number_cuts=3)
+            bpy.ops.object.mode_set(mode="OBJECT")
+            parts.append(bpy.context.object)
+        bpy.ops.object.select_all(action="DESELECT")
+        for o in parts:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = parts[0]
+        bpy.ops.object.join()
+        body = bpy.context.object
+        if rigged:
+            arm_data = bpy.data.armatures.new("A")
+            arm = bpy.data.objects.new("A", arm_data)
+            bpy.context.scene.collection.objects.link(arm)
+            bpy.context.view_layer.objects.active = arm
+            bpy.ops.object.mode_set(mode="EDIT")
+            for i in range(10):
+                b = arm_data.edit_bones.new(f"part{i}")
+                b.head, b.tail = (i * 1.0, 0, -0.4), (i * 1.0, 0, 0.4)
+            bpy.ops.object.mode_set(mode="OBJECT")
+            for i in range(10):                 # 部品ごとにボーン1本へ 100%
+                vg = body.vertex_groups.new(name=f"part{i}")
+                vg.add([v.index for v in body.data.vertices
+                        if abs(v.co.x - i * 1.0) < 0.5], 1.0, "REPLACE")
+            body.modifiers.new("A", "ARMATURE").object = arm
+        scene = bpy.context.scene
+        scene.fp_use_random_seed = False
+        scene.fp_color_seed = 5
+        scene.fp_sharp_auto = True
+        scene["fp_rig_coarse"] = True           # 手描き系の仕上がり
+        bpy.ops.object.select_all(action="DESELECT")
+        body.select_set(True)
+        bpy.context.view_layer.objects.active = body
+        return body
+
+    def split_parts(body):
+        # 1 つの箱の中で色が 2 色以上に分かれている箱の数。色の総数は、
+        # 離れた島がパレットの色を使い回すので比べられない
+        ca = body.data.color_attributes["mecha_color"]
+        buf = np.empty(len(ca.data) * 4, dtype=np.float32)
+        ca.data.foreach_get("color", buf)
+        col = buf.reshape(-1, 4)[:, :3].round(3)
+        per = {}
+        for p in body.data.polygons:
+            per.setdefault(round(p.center.x), set()).add(tuple(col[p.loop_start]))
+        return sum(1 for c in per.values() if len(c) > 1)
+
+    body = build()
+    bpy.ops.freepencil.auto_vertex_color()
+    auto = split_parts(body)
+    assert body.get("fp_paint_auto") == "MECHA",         f"剛体のリグがメカと判定されない: {body.get('fp_paint_auto')} ({body.get('fp_rigid_ratio')})"
+    body = build()
+    body.fp_paint_as = "CHARA"
+    bpy.ops.freepencil.auto_vertex_color()
+    chara = split_parts(body)
+    assert auto >= 8, f"メカの塗りで箱が角度で分かれていない: {auto}/10 箱"
+    assert chara == 0, f"キャラの指定でざっくり塗り(1 箱 1 色)にならない: {chara}/10 箱が分かれた"
+    body = build(rigged=False)
+    body.fp_paint_as = "CHARA"
+    bpy.ops.freepencil.auto_vertex_color()
+    plain = split_parts(body)
+    assert plain == 0, f"リグ無しでキャラの指定が効かない: {plain}/10 箱が分かれた"
+    bpy.ops.wm.read_homefile(use_empty=True)
 
 
 def main():

@@ -1157,5 +1157,37 @@ msgid "Fade fine stripes"
 msgstr "細かすぎる縞を薄く"
 
 msgctxt "*"
-msgid "Far away, fade rows of lines that are packed finer than the pixels (shutters, louvers, railings seen from a low angle) toward the paper, keeping floor bands and outlines. Stops the far end from crushing and flickering. 0 = off. Updates the drawing right away"
-msgstr "奥で画素より細かく並んだ線(低い視点から見たシャッター・ルーバー・手すり)を紙の色へ薄め、階の帯や輪郭は残します。奥がつぶれたり、動かしたときにちらついたりするのを防ぎます。0 = しない。動かすとすぐ絵に反映されます"
+msgid "Far away, blur rows of lines that are packed finer than the pixels (shutters, louvers, railings seen from a low angle) into a light haze, keeping floor bands and outlines. Only rows running one way are touched, not leaves. Stops the far end from crushing and flickering. 0 = off. Updates the drawing right away"
+msgstr "奥で画素より細かく並んだ線(低い視点から見たシャッター・ルーバー・手すり)をぼかして淡いもやにし、階の帯や輪郭は残します。向きのそろった縞だけに効き、木の葉は触りません。奥がつぶれたり、動かしたときにちらついたりするのを防ぎます。0 = しない。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "Paint as"
+msgstr "塗り方"
+
+msgctxt "*"
+msgid "How STEP1 paints this object in the hand-drawn finishes (Character / Background). Precise always splits by angle"
+msgstr "手描き系の仕上がり(キャラ・手描き背景)で、STEP1 がこのオブジェクトをどう塗るか。精密はいつも角度で分けます"
+
+msgctxt "*"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "*"
+msgid "Rigged objects are painted as characters, unless most vertices follow a single bone (a robot)"
+msgstr "リグ付きはキャラとして塗ります。ただし頂点の大半がボーン1本に固定されている物(ロボット)はメカとして塗ります"
+
+msgctxt "*"
+msgid "Split by edge angle and keep every panel line, even when rigged"
+msgstr "リグ付きでも角度で分け、パネルの線を全部出します"
+
+msgctxt "*"
+msgid "Character"
+msgstr "キャラ"
+
+msgctxt "*"
+msgid "Coarse paint: one color per part, joints blended by bone weights. Also works without a rig"
+msgstr "ざっくり塗り: パーツごとに1色、関節はボーンのウェイトでぼかします。リグが無くても使えます"
+
+msgctxt "*"
+msgid "Auto result: "
+msgstr "自動の判定: "

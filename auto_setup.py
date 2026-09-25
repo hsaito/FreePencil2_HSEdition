@@ -157,7 +157,10 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         # 近くに寄ったときだけでよい
         scene.fp_gap_fill = 6 if background else 0
         scene.fp_lw_ink = 0.75 if background else 1.0
-        scene.fp_lw_strength = 0.5 if background else 1.0
+        # キャラは 0.6(ほんのり強弱)。1.0 は輪郭が太すぎ、細かいメカを小さく
+        # 写すと黒く詰まった(リグ付きロボット)。太くしたいときはスライダーで
+        # 上げればその場で効く
+        scene.fp_lw_strength = 0.5 if background else (0.6 if weighted else 1.0)
         # 深度チャンネルは地面と空の境(深度の段差)を太い帯にする(実測)。
         # 背景では切る。奥の距離の計測もその帯を線に数えて狂っていた
         # (奥の終わり 238 -> 切ると 71)

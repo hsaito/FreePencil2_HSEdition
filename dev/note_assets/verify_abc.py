@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 OUT = Path(arg("--out", str(HERE / "out" / "verify_abc"))).resolve()
 ONLY = arg("--only", "japan-apartment,jnr-c62,european-maple")
 TAG = arg("--tag", "")
-RES = 800
+RES = int(arg("--res", "800"))
 TOWN = "--town" in ARGV
 
 sys.argv = ["blender", "--", "--out", str(OUT), "--res", str(RES), "--ss", "1"]
@@ -77,7 +77,14 @@ def models():
                 sc["fp_raise_cap"] = float(arg("--raise-cap"))
             if arg("--bone-smooth") is not None:   # ボーンの色をぼかす回数(実験)
                 sc["fp_bone_smooth"] = int(arg("--bone-smooth"))
+            if arg("--paint-as") is not None:      # オブジェクトの塗り方を全部上書き
+                for o in meshes:
+                    o.fp_paint_as = arg("--paint-as")
             bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+            if arg("--dense") is not None:         # 詰まった線を薄く を上書き
+                sc.fp_lw_dense = float(arg("--dense"))
+            if arg("--strength") is not None:      # 強弱の強さを上書き(その場で作り直す)
+                sc.fp_lw_strength = float(arg("--strength"))
             if arg("--stripe") is not None:        # 細かすぎる縞を薄く を上書き(その場で作り直す)
                 sc.fp_lw_stripe_fade = float(arg("--stripe"))
             sc.fp_white_preview = True

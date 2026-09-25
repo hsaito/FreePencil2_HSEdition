@@ -70,6 +70,16 @@ class FP_PT_Step0(_FPSub, bpy.types.Panel):
         col = layout.column(align=True)
         col.label(text=t("Recommended settings for this scene"), icon="INFO")
         layout.prop(scene, "fp_auto_style", text=t("Finish"))
+        # 選んでいるオブジェクトの塗り方(手描き系の仕上がりで効く)
+        obj = context.active_object
+        if obj is not None and obj.type == 'MESH':
+            box = layout.box()
+            box.enabled = scene.fp_auto_style != 'PRECISE'
+            box.prop(obj, "fp_paint_as", text=t("Paint as"))
+            kind = obj.get("fp_paint_auto")
+            if obj.fp_paint_as == 'AUTO' and kind:
+                label = t("Mecha") if kind == 'MECHA' else t("Character")
+                box.label(text=t("Auto result: ") + label, icon="INFO")
         layout.operator(FP_OT_AUTO_SETUP.bl_idname,
                         text=t("Auto setup (STEP1-3)"), icon="AUTO")
 

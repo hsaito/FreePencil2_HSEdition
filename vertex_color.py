@@ -45,6 +45,16 @@ VCOL_LAYER_BONE = "bone_color"
 COARSE_SMALL_PART = 0.02
 # キャラ(ざっくり塗り)でボーンの色を隣の頂点と平均する回数
 BONE_SMOOTH_ITERS = 8
+# リグ付きでも、頂点の大半がボーン1本に固定(剛体)されていればメカとして塗る。
+# ロボットは部品ごとに1本のボーンへ100%で付き、人は関節でなめらかに混ざる。
+# 実測(頂点のうちボーン1本が 99% 以上を持つ割合): ザク 0.94 /
+# anime-girl 0.80(髪・スカートが頭や腰に固定) / fredy 0.15 / man_01 0.27 /
+# mozo 0.20 / space_scavenger(宇宙服の人) 0.41
+RIGID_MECHA = 0.9
+# ボーンが少ないリグは判定しない(キャラのまま)。ボーンが 1〜2 本なら頂点は
+# どうしても1本に固定される。デッサン人形は頭だけ別のリグ(ボーン 2 本)で、
+# その頭が 0.93 になりロボットと判定された。ザクは 64 本すべてを使う
+RIGID_MIN_BONES = 8
 DEFAULT_MATERIAL_NAME = "FreePencil_Material"
 
 # ハッシュ関数
@@ -80,6 +90,84 @@ def get_pseudo_random_float_from_vec(
     return (h / 0xFFFFFFFF)
 
 # RGB色間のユークリッド距離
+_RIGID_CACHE = {}
+
+
+def _rigid_counts(obj, bones, used):
+    """1 メッシュの (ウェイトのある頂点数, ボーン1本が 99% 以上を持つ頂点数)。
+    ボーン名と一致する頂点グループだけを数える(マスク用のグループは除く)。
+    ウェイトの付いたボーンの名前を used に足す。"""
+    name_of = {vg.index: vg.name for vg in obj.vertex_groups if vg.name in bones}
+    if not name_of:
+        return 0, 0
+    tot = rigid = 0
+    for v in obj.data.vertices:
+        gs = [(g.group, g.weight) for g in v.groups
+              if g.group in name_of and g.weight > 1e-4]
+        if not gs:
+            continue
+        tot += 1
+        ws = [w for _, w in gs]
+        if max(ws) >= 0.99 * sum(ws):
+            rigid += 1
+        for gi, _ in gs:
+            used.add(name_of[gi])
+    return tot, rigid
+
+
+def rigid_ratio(obj):
+    """(割合, 使っているボーンの数)。このメッシュを動かすリグ(アーマチュア)で
+    動く全メッシュのうち、ボーン1本がウェイトの 99% 以上を持つ頂点の割合。
+
+    リグ単位でまとめて測る。部品が別オブジェクトのキャラでは、頭だけ・兜だけは
+    1本のボーンに固定されていて、1つずつ測るとロボットに見えた(デッサン人形の
+    頭 0.93、全体では 0.64)。
+    """
+    arm = next((m.object for m in obj.modifiers
+                if m.type == 'ARMATURE' and m.object), None)
+    if arm is None or obj.type != 'MESH':
+        return 0.0, 0
+    if arm.name in _RIGID_CACHE:
+        return _RIGID_CACHE[arm.name]
+    bones = set(arm.data.bones.keys())
+    used = set()
+    tot = rigid = 0
+    for o in bpy.data.objects:
+        if o.type != 'MESH' or not any(m.type == 'ARMATURE' and m.object == arm
+                                       for m in o.modifiers):
+            continue
+        t, r = _rigid_counts(o, bones, used)
+        tot += t
+        rigid += r
+    res = (rigid / tot if tot else 0.0, len(used))
+    _RIGID_CACHE[arm.name] = res
+    return res
+
+
+def paint_as(obj):
+    """手描き系の仕上がりでの塗り方: 'CHARA'(ざっくり塗り + ボーン塗り)か
+    'MECHA'(角度で分ける)。
+
+    オブジェクトの設定(fp_paint_as)が自動なら、リグの無い物はメカ、
+    リグ付きはボーンを RIGID_MIN_BONES 本以上使い、rigid_ratio >= RIGID_MECHA
+    ならメカ、それ以外はキャラ。
+    判定の結果は obj["fp_paint_auto"] に残す(パネルに出す)。
+    """
+    mode = getattr(obj, "fp_paint_as", 'AUTO')
+    if mode in ('MECHA', 'CHARA'):
+        return mode
+    rigged = any(m.type == 'ARMATURE' and m.object for m in obj.modifiers)
+    if not rigged:
+        kind = 'MECHA'
+    else:
+        r, n_bones = rigid_ratio(obj)
+        kind = ('MECHA' if r >= RIGID_MECHA and n_bones >= RIGID_MIN_BONES
+                else 'CHARA')
+        obj["fp_rigid_ratio"] = round(r, 3)
+    obj["fp_paint_auto"] = kind
+    return kind
+
+
 def color_distance_rgb(rgb1, rgb2):
     """Return the Euclidean distance between two RGB tuples."""
     return math.sqrt(sum([(c1 - c2)**2 for c1, c2 in zip(rgb1, rgb2)]))
@@ -236,6 +324,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
         time_start = time.time()
         scene = context.scene
         active_obj = context.active_object
+        _RIGID_CACHE.clear()          # ウェイトを直したあとの塗り直しで古い判定を使わない
 
         # --- マスターシード決定（再現性のため）---
         # ランダム指定時は新しいシードを生成し、実際に使った値を
@@ -428,9 +517,14 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
             # 1色。キャラの線は、このパーツの境目とボーンの塗り(ウェイトで
             # ぼかした bone_color)で出す。角度で細かく分けると、腕や髪が線で
             # 黒く潰れた(ジョギングの動画で実測)
+            #
+            # 塗り方はオブジェクトごとに上書きできる(fp_paint_as)。自動のときは
+            # リグの付き方で見分ける: ボーン1本に固定された頂点が多い物は
+            # ロボットとしてメカの塗り(精密と同じ角度の分け方)にする。
+            # リグ付きのザクがざっくり塗りになり、胴体が1色でパネルの線が
+            # 消えた(棲み分けの試験、dev/note_assets/out/separation)
             rig_coarse = (bool(scene.get("fp_rig_coarse"))
-                          and any(m.type == 'ARMATURE' and m.object
-                                  for m in obj.modifiers))
+                          and paint_as(obj) == 'CHARA')
             try:
                 # --- 0. 自動しきい値: 二面角の分布からモデル系統を判定 ---
                 effective_threshold_rad = angle_threshold_rad
