@@ -3198,6 +3198,190 @@ def t66():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+def _bg_scene(style="BACKGROUND"):
+    """スザンヌと溝の付いた箱。カメラ付き。仕上がり style で STEP0 まで。"""
+    import math
+    bpy.ops.wm.read_homefile(use_empty=True)
+    objs = []
+    bpy.ops.mesh.primitive_monkey_add(size=1.6, location=(-1.2, 0, 0.9))
+    objs.append(bpy.context.object)
+    bpy.ops.mesh.primitive_cube_add(size=1.2, location=(0.8, 0.3, 0.6))
+    objs.append(bpy.context.object)
+    for i in range(4):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0.8, -0.31, 0.2 + i * 0.28))
+        g = bpy.context.object
+        g.scale = (1.0, 0.02, 0.03)
+        objs.append(g)
+    scene = bpy.context.scene
+    cam = bpy.data.objects.new("C", bpy.data.cameras.new("C"))
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    cam.location = (0, -6, 1.6)
+    cam.rotation_euler = (math.radians(82), 0, 0)
+    scene.render.resolution_x, scene.render.resolution_y = 320, 240
+    scene.render.film_transparent = True
+    for p_ in ("fp_use_random_seed", "fp_enable_compositor_view", "fp_auto_detect_aov"):
+        setattr(scene, p_, False)
+    scene.fp_color_seed = 7
+    scene.fp_auto_style = style
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    return scene
+
+
+def _render_gray(scene, path):
+    import numpy as np
+    scene.render.filepath = str(path)
+    bpy.ops.render.render(write_still=True)
+    img = bpy.data.images.load(str(path))
+    w, h = img.size
+    buf = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(buf)
+    bpy.data.images.remove(img)
+    a = buf.reshape(h, w, 4)
+    return a[..., 3] * (1.0 - a[..., :3].mean(axis=2))     # インクの濃さ(白地で)
+
+
+@test("fine lines slider: the live result equals the STEP3 result (background)")
+def t67():
+    # 細い線のつまみを動かした直後、線がほとんど消えた(STEP3 を押すと戻る)。
+    # 合成だけを後から差し直していたため。動かした直後と STEP3 後が同じ絵になること
+    import shutil
+    import tempfile
+    import numpy as np
+    scene = _bg_scene()
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t67_"))
+    try:
+        base = _render_gray(scene, tmp / "a.png")
+        scene.fp_fine_lines = 0.85
+        live = _render_gray(scene, tmp / "b.png")
+        bpy.ops.freepencil2.link_button()
+        rebuilt = _render_gray(scene, tmp / "c.png")
+        assert live.sum() > base.sum() * 0.7, f"動かした直後に線が消えた: {base.sum():.0f} -> {live.sum():.0f}"
+        d = float(np.abs(live - rebuilt).mean())
+        assert d < 0.002, f"動かした直後と STEP3 後で絵が違う(平均差 {d:.4f})"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("background with the test node: STEP3 does not fail on fine lines")
+def t68():
+    # テストノード(出力は Image だけ)を選ぶと、細い線が "sample" を探して止まった
+    scene = _bg_scene()
+    scene.fp_node_type = "test"
+    res = bpy.ops.freepencil2.link_button()
+    assert res == {"FINISHED"}, res
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("line weight checkbox takes effect without pressing STEP3")
+def t69():
+    # チェックを切っても、STEP3 を押すまで強弱のノードが残っていた
+    from freepencil2 import line_weight
+    scene = _bg_scene("WEIGHTED")
+    tree = fp_batch.comp_tree(scene)
+    assert any(n.label == line_weight.NODE_LABEL for n in tree.nodes)
+    scene.fp_line_weight = False
+    tree = fp_batch.comp_tree(scene)
+    assert not any(n.label == line_weight.NODE_LABEL for n in tree.nodes),         "チェックを切っても強弱のノードが残った"
+    scene.fp_line_weight = True
+    tree = fp_batch.comp_tree(scene)
+    assert any(n.label == line_weight.NODE_LABEL for n in tree.nodes),         "チェックを入れても強弱のノードが入らない"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("hard boundary bones keep their step in the coarse (character) paint")
+def t70():
+    # キャラのざっくり塗りはボーンの色を隣と平均してぼかす。硬境界ボーン
+    # (わざと段差を残す所)までぼかしていて、キャラ/背景では効かなかった
+    import numpy as np
+
+    def run(hard):
+        bpy.ops.wm.read_homefile(use_empty=True)
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.3, depth=2.0, vertices=16)
+        body = bpy.context.object
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.subdivide(number_cuts=8)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        ad = bpy.data.armatures.new("A")
+        arm = bpy.data.objects.new("A", ad)
+        bpy.context.scene.collection.objects.link(arm)
+        bpy.context.view_layer.objects.active = arm
+        bpy.ops.object.mode_set(mode="EDIT")
+        for n, (h, t) in (("lo", ((0, 0, -1), (0, 0, 0))), ("hi", ((0, 0, 0), (0, 0, 1)))):
+            b = ad.edit_bones.new(n)
+            b.head, b.tail = h, t
+        bpy.ops.object.mode_set(mode="OBJECT")
+        lo, hi = body.vertex_groups.new(name="lo"), body.vertex_groups.new(name="hi")
+        for v in body.data.vertices:                 # なだらかなウェイト
+            w = min(1.0, max(0.0, (v.co.z + 0.4) / 0.8))
+            lo.add([v.index], 1 - w, "REPLACE")
+            hi.add([v.index], w, "REPLACE")
+        body.modifiers.new("A", "ARMATURE").object = arm
+        scene = bpy.context.scene
+        scene.fp_use_random_seed = False
+        scene.fp_color_seed = 5
+        scene["fp_rig_coarse"] = True
+        scene.fp_bone_hard_names = hard
+        bpy.ops.object.select_all(action="DESELECT")
+        body.select_set(True)
+        bpy.context.view_layer.objects.active = body
+        bpy.ops.freepencil.auto_vertex_color()
+        me = body.data
+        ca = me.color_attributes["bone_color"]
+        buf = np.empty(len(ca.data) * 4, dtype=np.float32)
+        ca.data.foreach_get("color", buf)
+        lv = np.empty(len(me.loops), dtype=np.int32)
+        me.loops.foreach_get("vertex_index", lv)
+        vc = np.zeros((len(me.vertices), 3))
+        vc[lv] = buf.reshape(-1, 4)[:, :3]
+        ev = np.empty(len(me.edges) * 2, dtype=np.int32)
+        me.edges.foreach_get("vertices", ev)
+        ev = ev.reshape(-1, 2)
+        return float(np.abs(vc[ev[:, 0]] - vc[ev[:, 1]]).max())
+
+    soft = run("")
+    hard = run("hi")
+    assert hard > soft * 2 and hard > 0.05,         f"硬境界ボーンを指定しても段差が出ない: なし {soft:.3f} / 指定 {hard:.3f}"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("finish dropdown keeps the character-paint flag in step with it")
+def t71():
+    # 目印は STEP0 でしか変わらず、精密に戻して STEP1 だけ押すとキャラの塗り方のままだった
+    bpy.ops.wm.read_homefile(use_empty=True)
+    scene = bpy.context.scene
+    scene.fp_auto_style = "WEIGHTED"
+    assert scene.get("fp_rig_coarse"), "キャラにしても目印が立たない"
+    scene.fp_auto_style = "PRECISE"
+    assert not scene.get("fp_rig_coarse"), "精密に戻しても目印が残った"
+    scene.fp_auto_style = "BACKGROUND"
+    assert scene.get("fp_rig_coarse"), "手描き背景にしても目印が立たない"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("every Set Alpha node the add-on builds replaces the alpha (4.x and 5.x)")
+def t72():
+    # 5.x では SetAlpha の mode が「Type」ソケットに移り、書き込み先が見つからず
+    # 「Apply Mask」のまま動いていた。手描き背景の隙間埋めが色を外へにじませ、
+    # 5.2 だけ輪郭が二重になった(総当りで発見)
+    scene = _bg_scene()
+    tree = fp_batch.comp_tree(scene)
+    sas = [n for n in tree.nodes if n.bl_idname == "CompositorNodeSetAlpha"]
+    assert len(sas) >= 2, f"SetAlpha が見つからない: {len(sas)}"
+    for n in sas:
+        mode = getattr(n, "mode", None)
+        if mode is None:
+            sock = n.inputs.get("Type")
+            mode = sock.default_value if sock is not None else None
+        assert mode in ("REPLACE_ALPHA", "Replace Alpha"), f"{n.name}: {mode}"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

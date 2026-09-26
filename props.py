@@ -45,20 +45,45 @@ def _update_fine_lines(self, context):
     STEP3 を押し直さなくても割合を変えられる(塗り分けは STEP0 が 2 枚
     作ってあるので、変わるのは合成だけ)。
     """
+    # 細い線の合成だけを後から差し直すと、強弱や奥の扱いを挿し終えた
+    # あとのグループを複製・配線することになり、動かした直後に線が
+    # ほとんど消えた(STEP3 を押すと戻る。総当りで発見)。STEP3 ごと作り直す
+    _rebuild_step3(context)
+
+
+def _rebuild_step3(context) -> None:
+    """生成済みの STEP3 を作り直す(ボタンと同じ処理)。無いシーンでは何もしない。"""
     from . import compat, fp_core
     scene = context.scene
     tree = compat.get_compositor_tree(scene)
     if tree is None:
         return
-    rl = next((n for n in tree.nodes if n.type == "R_LAYERS"), None)
-    comp = next((n for n in tree.nodes if n.type in compat.OUTPUT_NODE_TYPES), None)
-    grp = next((n for n in tree.nodes
-                if n.type == "GROUP" and n.node_tree is not None
-                and n.node_tree.name.startswith(fp_core.NODE_GROUP_PREFIX)
-                and n.label != "FreePencil_fine_line"), None)
-    if rl is None or comp is None or grp is None:
+    if not any(n.type == "GROUP" and n.node_tree is not None
+               and n.node_tree.name.startswith(fp_core.NODE_GROUP_PREFIX)
+               for n in tree.nodes):
         return
-    fp_core._apply_fine_lines(tree, scene, rl, grp, comp)
+    fp_core.setup_compositor(scene, context.view_layer)
+
+
+def _update_auto_style(self, context):
+    """仕上がりを変えたら、キャラの塗り方の目印(fp_rig_coarse)も合わせる。
+
+    目印は STEP0 を押したときにしか変わらず、仕上がりを「精密」に戻してから
+    STEP1 だけ押し直すと、古い目印のままキャラの塗り方になった(パネルでは
+    「塗り方」の欄が精密で灰色になっていて、表示と動きが食い違った)。
+    """
+    scene = context.scene
+    if getattr(scene, "fp_auto_style", "PRECISE") == "PRECISE":
+        if "fp_rig_coarse" in scene:
+            del scene["fp_rig_coarse"]
+    else:
+        scene["fp_rig_coarse"] = True
+
+
+def _update_line_weight_toggle(self, context):
+    """強弱の ON/OFF。感度の実効値も変わるので STEP3 ごと作り直す。
+    以前は感度だけ書き換えていて、STEP3 を押すまで絵が変わらなかった。"""
+    _rebuild_step3(context)
 
 
 def _update_line_weight_live(self, context):
@@ -322,13 +347,12 @@ def register_props():
             description=(
                 "Thicken the line where the shape is recessed and thin it "
                 "where it is open, using the ambient-occlusion pass. "
-                "Needs STEP3 to be run again"
+                "Updates the drawing right away"
             ),
             # 既定OFF。既存ファイルの絵を勝手に変えない
             default=False,
-            # 切り替えたら線のしきい値も連動させる。STEP3 をやり直す
-            # までノードは組まれないが、線の量はその場で変わる
-            update=_update_line_tuning
+            # 切り替えたら STEP3 ごと作り直す(感度の実効値も変わる)
+            update=_update_line_weight_toggle
         ),
         "fp_lw_strength": FloatProperty(
             name="Weight strength",
@@ -473,7 +497,9 @@ def register_props():
             # 既定ON。実測でスザンヌの耳と車のグリルが黒く潰れ、
             # 素の線より悪くなった。抑制すると潰れが解け、詰まって
             # いない場所(キャラの輪郭など)は1画素も変わらない
-            default=1.0, min=0.0, max=1.0, step=0.05, precision=2
+            default=1.0, min=0.0, max=1.0, step=0.05, precision=2,
+            # 他の強弱のつまみと同じく、動かしたら STEP3 ごと作り直す
+            update=_update_line_weight_live
         ),
         # 段の境目。d = 1 - AO の分位点。モデルごとに15倍ひらくので
         # 「しきい値を測る」ボタンでカットごとに入れ直す
@@ -523,7 +549,8 @@ def register_props():
                  "thin, fewer and lighter with distance, and foliage is "
                  "painted in clumps instead of leaf by leaf"),
             ],
-            default='PRECISE'
+            default='PRECISE',
+            update=_update_auto_style
         ),
         # STEP0 全自動が適用する項目の個別ON/OFF
         **{

@@ -845,6 +845,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                               if s.strip()}
 
                 vertex_colors = [(1.0, 1.0, 1.0)] * len(verts)
+                hard_mask = np.zeros(len(verts), dtype=bool)
                 for v in verts:
                     accum = [0.0, 0.0, 0.0]
                     total = 0.0
@@ -864,6 +865,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                                     and group_base_name[g.group].lower() in hard_names):
                                 hard_touch = True
                     if hard_touch and best_g is not None:
+                        hard_mask[v.index] = True
                         c = group_colors[best_g]
                         c = [min(1.0, c[0] + 0.1), min(1.0, c[1] + 0.1),
                              min(1.0, c[2] + 0.1)]
@@ -885,12 +887,16 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     obj.data.edges.foreach_get("vertices", ev)
                     ev = ev.reshape(-1, 2)
                     cols = np.asarray(vertex_colors, dtype=np.float64)
+                    hard_cols = cols[hard_mask].copy()
                     deg = np.bincount(ev.ravel(), minlength=len(verts)).astype(np.float64)
                     for _ in range(n_smooth):
                         acc = cols.copy()
                         np.add.at(acc, ev[:, 0], cols[ev[:, 1]])
                         np.add.at(acc, ev[:, 1], cols[ev[:, 0]])
                         cols = acc / (deg + 1.0)[:, None]
+                        # 硬境界ボーンの頂点はぼかさない(わざと段差を残した所)。
+                        # ぼかしていたので、キャラ/手描き背景では硬境界が効かなかった
+                        cols[hard_mask] = hard_cols
                     vertex_colors = [tuple(c) for c in cols.tolist()]
             else:
                 vertex_colors = [(1.0, 1.0, 1.0)] * len(verts)

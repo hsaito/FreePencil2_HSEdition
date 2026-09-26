@@ -188,6 +188,13 @@ def filter_factor_input(node):
             or node.inputs[0])
 
 
+# 4.x のプロパティ名 -> 5.x で移った先のソケット名(名前が変わったもの)
+_SOCKET_ALIASES = {
+    "mode": ["Type"],       # SetAlpha
+    "space": ["Type"],      # Scale
+}
+
+
 def set_node_value(node, name: str, value) -> None:
     """ノードの設定値を、プロパティでもソケットでも受け付けて設定する。
 
@@ -199,8 +206,13 @@ def set_node_value(node, name: str, value) -> None:
     if hasattr(node, name):
         setattr(node, name, value)
         return
-    # 'contrast_limit' -> 'Contrast Limit' のようにソケット名へ寄せる
-    candidates = (name, name.replace("_", " ").title())
+    # 'contrast_limit' -> 'Contrast Limit' のようにソケット名へ寄せる。
+    # 5.x では SetAlpha.mode と Scale.space がどちらも「Type」という名前の
+    # ソケットになった。これを知らずに何も書かずに戻っていて、5.2 では
+    # SetAlpha が「Apply Mask」のまま動き、手描き背景の隙間埋めが色を
+    # 外へにじませて輪郭が二重になった(総当りで発見)
+    candidates = [name, name.replace("_", " ").title()]
+    candidates += _SOCKET_ALIASES.get(name, [])
     for cand in candidates:
         sock = node.inputs.get(cand)
         if sock is not None:
@@ -210,6 +222,10 @@ def set_node_value(node, name: str, value) -> None:
                 # 'REPLACE_ALPHA' のような識別子はメニュー表示名と異なる
                 sock.default_value = value.replace("_", " ").title()
             return
+    # どこにも書けなかったら黙って戻らない(今回の見逃しの原因)
+    import logging
+    logging.getLogger(__name__).warning(
+        f"set_node_value: {node.bl_idname} has no '{name}' (value {value!r} not set)")
 
 
 def file_output_set_dir(fo, path: str) -> None:

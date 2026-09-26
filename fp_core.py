@@ -671,6 +671,10 @@ def _apply_fine_lines(tree, scene, rl, group_node, comp):
     src = next((o for o in rl.outputs if o.name == "fine_color"), None)
     if k <= 0.0 or src is None or group_node.node_tree is None:
         return 0
+    # 細い線はプロノードの "sample" 出力を使う。テストノード(出力は Image
+    # だけ)を選ぶと、手描き背景では STEP3 が KeyError で止まっていた(総当りで発見)
+    if "sample" not in group_node.outputs:
+        return 0
     if not comp.inputs or not comp.inputs[0].is_linked:
         return 0
     made = []

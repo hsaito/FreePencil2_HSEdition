@@ -945,8 +945,8 @@ msgid "Scale the line-detection thresholds inside the node group. Lower = weaker
 msgstr "ノードグループの中の線を出すしきい値を掛け算します。低いほど弱い境目も線になります(1.0 = ノードのまま)"
 
 msgctxt "*"
-msgid "Thicken the line where the shape is recessed and thin it where it is open, using the ambient-occlusion pass. Needs STEP3 to be run again"
-msgstr "アンビエントオクルージョンを使い、くぼんだ所の線を太く、開いた所を細くします。STEP3 をやり直すと反映されます"
+msgid "Thicken the line where the shape is recessed and thin it where it is open, using the ambient-occlusion pass. Updates the drawing right away"
+msgstr "アンビエントオクルージョンを使い、くぼんだ所の線を太く、開いた所を細くします。動かすとすぐ絵に反映されます"
 
 msgctxt "*"
 msgid "While line weight is on, allow fewer islands so the mesh is cut more coarsely. A thin rim seen edge-on stops turning every mesh ring into its own line. 1.0 = do not change it"
@@ -1191,3 +1191,7 @@ msgstr "ざっくり塗り: パーツごとに1色、関節はボーンのウェ
 msgctxt "*"
 msgid "Auto result: "
 msgstr "自動の判定: "
+
+msgctxt "*"
+msgid "Fine lines: run STEP0 with Background"
+msgstr "細い線: 仕上がり「手描き背景」で STEP0 を押すと使えます"

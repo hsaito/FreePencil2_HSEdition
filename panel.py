@@ -244,7 +244,17 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
                  slider=True)
         sub.prop(scene, "fp_lw_ink", text=t("Ink darkness"), slider=True)
         sub.prop(scene, "fp_lw_soften", text=t("Soften edges"), slider=True)
-        sub.prop(scene, "fp_fine_lines", text=t("Fine lines"), slider=True)
+        # 細い線はメカの塗り(fine_color)が無いと何も起きない。手描き背景の
+        # STEP0 だけが作るので、無いときは灰色にして作り方を出す(総当りで、
+        # キャラでは動かしても絵が変わらないことが分かった)
+        obj = context.active_object
+        has_fine = (obj is not None and obj.type == 'MESH'
+                    and "fine_color" in obj.data.color_attributes)
+        row = sub.row(align=True)
+        row.enabled = has_fine
+        row.prop(scene, "fp_fine_lines", text=t("Fine lines"), slider=True)
+        if not has_fine:
+            sub.label(text=t("Fine lines: run STEP0 with Background"), icon="INFO")
         # 奥の扱い(深度パス)。町のように奥へ続くセット向け
         far = sub.column(align=True)
         far.prop(scene, "fp_lw_far", text=t("Thin far lines"), slider=True)
