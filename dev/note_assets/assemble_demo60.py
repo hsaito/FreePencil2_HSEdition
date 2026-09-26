@@ -1,6 +1,6 @@
 """60 秒デモ: 背景・メカ・キャラを見せて、最後に3つを並べる。曲は「最終決戦の序曲」。
 
-  python assemble_demo60.py [--preview] [--out out/demo60/FreePencil2_v2.8_demo60.mp4]
+  python assemble_demo60.py --song <mp3> [--preview] [--out out/demo60/FreePencil2_v2.8_demo60.mp4]
 
 区切りは曲の音の引き(5 / 10.3 / 36 / 56 秒)と山(49〜52 秒)に合わせ、近くの
 一番強い拍へ 0.3 秒以内で吸い付ける。素材:
@@ -33,7 +33,7 @@ PREV = "--preview" in ARGV
 W = 960 if PREV else 1920
 H = W * 9 // 16
 FPS = 24
-SONG = Path(arg("--song", "C:/Users/machi/Desktop/最終決戦の序曲 (1).mp3"))
+SONG = Path(arg("--song") or sys.exit("--song <曲の mp3> を指定してください"))
 OUT = Path(arg("--out", str(O / "demo60" / ("demo60_preview.mp4" if PREV else "FreePencil2_v2.8_demo60.mp4"))))
 sfx = "_preview" if PREV else ""
 SRC = {
