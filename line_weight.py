@@ -1442,7 +1442,12 @@ def measure_edges(scene, view_layer, percent=100):
     # 白プレビューを最後に立てるので、計測は必ず陰影付きで走っていた)。
     # 計測の間だけ白にして、終わったら戻す
     from . import fp_core
-    was_white = bool(getattr(scene, "fp_white_preview", False))
+    # 今のプレビューは種類で見る(旧トグルは種類とずれることがあった)。
+    # モノクロ中なら、いったん外してから白にし、測り終えたら掛け直す
+    mode = getattr(scene, "fp_preview_mode", "NONE")
+    was_white = mode == "WHITE"
+    if mode == "MONO_LIGHT":
+        fp_core.set_mono_light_preview(scene, False)
     if not was_white:
         fp_core.set_white_preview(
             scene, True, keep_glass=getattr(scene, "fp_white_keep_glass", True))
@@ -1460,6 +1465,9 @@ def measure_edges(scene, view_layer, percent=100):
             tree.nodes.remove(n)
         if not was_white:
             fp_core.set_white_preview(scene, False)
+        if mode == "MONO_LIGHT":
+            fp_core.set_mono_light_preview(
+                scene, True, floor=getattr(scene, "fp_mono_floor", 0.25))
         scene.render.resolution_percentage = keep_pct
         # 測るたびに temp が残っていた
         shutil.rmtree(tmp, ignore_errors=True)

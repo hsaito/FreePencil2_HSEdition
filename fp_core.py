@@ -907,9 +907,12 @@ def setup_compositor(scene: bpy.types.Scene,
 
     # プレビュー中に STEP3 を再生成した場合は掛け直す。白だけ戻していて、
     # モノクロは外れたまま(表示はモノクロなのに材質の色で出た)だった
-    if getattr(scene, "fp_white_preview", False):
+    # 見るのはプレビューの種類だけ。旧トグル(fp_white_preview)は種類を
+    # 切り替えても残っていて、それを見て白を掛け直していた(v2.8.0)
+    mode = getattr(scene, "fp_preview_mode", "NONE")
+    if mode == "WHITE":
         set_white_preview(scene, True)
-    elif getattr(scene, "fp_preview_mode", "NONE") == "MONO_LIGHT":
+    elif mode == "MONO_LIGHT":
         set_mono_light_preview(scene, True,
                                floor=getattr(scene, "fp_mono_floor", 0.25))
 

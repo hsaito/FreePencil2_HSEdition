@@ -88,18 +88,26 @@ def _apply_preview_mode(scene) -> None:
     """
     from . import fp_core
     mode = getattr(scene, "fp_preview_mode", "NONE")
+    # 旧トグル(白)を種類に合わせる。更新フックを通さずに書く(通すと種類を
+    # NONE に戻してしまう)。ずれたままだと、STEP3 の作り直しやスライダーで
+    # 古い方の値を見て掛け直し、「白」を選んでいるのに材質の色で出た
+    if bool(scene.get("fp_white_preview", False)) != (mode == "WHITE"):
+        scene["fp_white_preview"] = (mode == "WHITE")
+    if mode == "MONO_LIGHT":
+        # 陰影の素になるパスが無いと真っ黒になる。つなぐ前に立てる。後で
+        # 立てていたので、5.2 ではつなぐ時点でパスの口が無く、最初に
+        # モノクロを選んだときだけ材質の色で出た(画像で確認)
+        vl = bpy.context.view_layer
+        if not vl.use_pass_diffuse_direct:
+            vl.use_pass_diffuse_direct = True
+            vl.update()
+            logger.info("Enabled the Diffuse Direct pass for mono preview")
     fp_core.set_white_preview(
         scene, mode == "WHITE",
         keep_glass=getattr(scene, "fp_white_keep_glass", True))
     fp_core.set_mono_light_preview(
         scene, mode == "MONO_LIGHT",
         floor=getattr(scene, "fp_mono_floor", 0.25))
-    if mode == "MONO_LIGHT":
-        # 陰影の素になるパスが無いと真っ黒になる
-        vl = bpy.context.view_layer
-        if not vl.use_pass_diffuse_direct:
-            vl.use_pass_diffuse_direct = True
-            logger.info("Enabled the Diffuse Direct pass for mono preview")
     logger.info(f"Preview mode: {mode}")
 
 

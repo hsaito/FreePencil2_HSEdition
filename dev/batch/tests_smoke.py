@@ -3157,6 +3157,47 @@ def t65():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("preview kind survives STEP3 regeneration whatever the old white toggle says")
+def t66():
+    # プレビューは「種類」と旧トグル(白)の2か所に持っていて、種類を切り替えても
+    # 旧トグルが残っていた。STEP3 の作り直し(スライダーを動かしたときも)は旧トグルを
+    # 見て掛け直すので、マテリアルやモノクロを選んでいるのに白になり、逆に旧トグルが
+    # 切れたまま白を選ぶと、作り直しで材質の色に戻った(v2.8.0、画像で確認)
+    from freepencil2 import fp_core
+    fresh_scene_with_islands()
+    bpy.ops.freepencil.auto_vertex_color()
+    scene = bpy.context.scene
+    bpy.context.view_layer.use_pass_diffuse_direct = True
+    scene.fp_node_type = "pro"
+    fp_core.setup_aov(scene, bpy.context.view_layer)
+    fp_core.setup_compositor(scene, bpy.context.view_layer)
+
+    def shown():
+        tree = fp_batch.comp_tree(scene)
+        grp = next(n for n in tree.nodes
+                   if n.type == 'GROUP' and n.node_tree
+                   and n.node_tree.name.startswith(fp_core.NODE_GROUP_PREFIX)
+                   and n.label != "FreePencil_fine_line")
+        sock = grp.inputs["Image"]
+        src = sock.links[0].from_node if sock.is_linked else None
+        if src is not None and src.label == fp_core.MONO_LABEL:
+            return "MONO_LIGHT"
+        if src is not None and src.label == fp_core.WHITE_MIX_LABEL:
+            return "WHITE" if src.inputs[0].default_value > 0.5 else "NONE"
+        return "NONE"
+
+    for mode in ("WHITE", "NONE", "MONO_LIGHT", "WHITE", "NONE"):
+        scene.fp_preview_mode = mode
+        fp_core.setup_compositor(scene, bpy.context.view_layer)   # 作り直し
+        assert shown() == mode, f"{mode} を選んで作り直したら {shown()} で出た"
+    # 旧トグルだけが外れたまま(古いファイル)で白を選ぶ
+    scene["fp_white_preview"] = False
+    scene.fp_preview_mode = "WHITE"
+    fp_core.setup_compositor(scene, bpy.context.view_layer)
+    assert shown() == "WHITE", f"白を選んで作り直したら {shown()} で出た"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()
