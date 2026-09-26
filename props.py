@@ -18,6 +18,8 @@ def _update_line_tuning(self, context):
     生成済みの FreePencil ノードグループのランプ位置を直接更新する
     (ノードエディタを開かずにサイドバーだけで調整できる)。
     """
+    if _QUIET[0]:
+        return
     from . import fp_core
     from . import line_weight
     scene = context.scene
@@ -31,6 +33,8 @@ def _update_line_tuning(self, context):
 
 def _update_far_relief(self, context):
     """遠景つぶれ軽減のスライダーを、生成済みノードへ即時反映する。"""
+    if _QUIET[0]:
+        return
     from . import fp_core
     from . import line_weight
     scene = context.scene
@@ -45,6 +49,8 @@ def _update_fine_lines(self, context):
     STEP3 を押し直さなくても割合を変えられる(塗り分けは STEP0 が 2 枚
     作ってあるので、変わるのは合成だけ)。
     """
+    if _QUIET[0]:
+        return
     # 細い線の合成だけを後から差し直すと、強弱や奥の扱いを挿し終えた
     # あとのグループを複製・配線することになり、動かした直後に線が
     # ほとんど消えた(STEP3 を押すと戻る。総当りで発見)。STEP3 ごと作り直す
@@ -80,9 +86,59 @@ def _update_auto_style(self, context):
         scene["fp_rig_coarse"] = True
 
 
+# まとめたつまみ 1 本 -> 中の値。1.0 で手描き背景の既定(v2.8.0 と同じ値)
+def far_values(k: float) -> dict:
+    """「奥の扱い」k から、奥ほど細く/線を減らす/薄く の3つ。"""
+    k = max(0.0, float(k))
+    return {"fp_lw_far": min(1.0, k), "fp_lw_far_sens": min(4.0, 1.0 + k),
+            "fp_lw_far_fade": min(1.0, 0.35 * k)}
+
+
+def relief_values(c: float) -> dict:
+    """「つぶれ軽減」c から、詰まった線を薄く/細かすぎる縞を薄く の2つ。"""
+    c = max(0.0, float(c))
+    return {"fp_lw_dense": min(1.0, 0.6 * c), "fp_lw_stripe_fade": min(1.0, c)}
+
+
+_QUIET = [False]
+
+
+def _write_quiet(scene, values: dict) -> None:
+    """更新フックを動かさずに書く(1つずつ STEP3 を作り直さない)。
+
+    scene["名前"] = 値 で書くと、5.x では登録したプロパティとは別の
+    カスタムプロパティになり、本当の値が変わらなかった(総当りで発見:
+    5.2 でまとめたつまみを動かしても中の値が変わらず、白の旧トグルも
+    種類に合わせられていなかった)。ふつうに setattr し、フックは
+    _QUIET の間は何もしない。
+    """
+    _QUIET[0] = True
+    try:
+        for k, v in values.items():
+            setattr(scene, k, v)
+    finally:
+        _QUIET[0] = False
+
+
+def _update_far_amount(self, context):
+    if _QUIET[0]:
+        return
+    _write_quiet(context.scene, far_values(context.scene.fp_lw_far_amount))
+    _rebuild_step3(context)
+
+
+def _update_relief(self, context):
+    if _QUIET[0]:
+        return
+    _write_quiet(context.scene, relief_values(context.scene.fp_lw_relief))
+    _rebuild_step3(context)
+
+
 def _update_line_weight_toggle(self, context):
     """強弱の ON/OFF。感度の実効値も変わるので STEP3 ごと作り直す。
     以前は感度だけ書き換えていて、STEP3 を押すまで絵が変わらなかった。"""
+    if _QUIET[0]:
+        return
     _rebuild_step3(context)
 
 
@@ -93,6 +149,8 @@ def _update_line_weight_live(self, context):
     STEP3 を作り直す(ボタンと同じ処理、0.1〜0.3 秒)。STEP3 がまだ無い
     シーンでは何もしない(勝手にコンポジタを作らない)。
     """
+    if _QUIET[0]:
+        return
     from . import compat, fp_core
     scene = context.scene
     tree = compat.get_compositor_tree(scene)
@@ -116,8 +174,8 @@ def _apply_preview_mode(scene) -> None:
     # 旧トグル(白)を種類に合わせる。更新フックを通さずに書く(通すと種類を
     # NONE に戻してしまう)。ずれたままだと、STEP3 の作り直しやスライダーで
     # 古い方の値を見て掛け直し、「白」を選んでいるのに材質の色で出た
-    if bool(scene.get("fp_white_preview", False)) != (mode == "WHITE"):
-        scene["fp_white_preview"] = (mode == "WHITE")
+    if bool(getattr(scene, "fp_white_preview", False)) != (mode == "WHITE"):
+        _write_quiet(scene, {"fp_white_preview": mode == "WHITE"})
     if mode == "MONO_LIGHT":
         # 陰影の素になるパスが無いと真っ黒になる。つなぐ前に立てる。後で
         # 立てていたので、5.2 ではつなぐ時点でパスの口が無く、最初に
@@ -137,11 +195,15 @@ def _apply_preview_mode(scene) -> None:
 
 
 def _update_preview_mode(self, context):
+    if _QUIET[0]:
+        return
     _apply_preview_mode(context.scene)
 
 
 def _update_white_preview(self, context):
     """旧トグル。種類へ橋渡しして、古いスクリプトでも動くようにする。"""
+    if _QUIET[0]:
+        return
     scene = context.scene
     want = "WHITE" if scene.fp_white_preview else "NONE"
     if getattr(scene, "fp_preview_mode", "NONE") != want:
@@ -152,6 +214,8 @@ def _update_white_preview(self, context):
 
 def _update_white_keep_glass(self, context):
     """プレビュー中にガラス維持を切り替えたら復元→再適用で反映する。"""
+    if _QUIET[0]:
+        return
     from . import fp_core
     scene = context.scene
     if scene.fp_white_preview:
@@ -421,6 +485,29 @@ def register_props():
             default=0.0, min=0.0, max=1.0, step=5, precision=2,
             update=_update_line_weight_live
         ),
+        # パネルに出すのはこの2本。中の5つはまとめて動かす(v2.8.1 で整理。
+        # 5つとも組で動かすもので、1つずつ触る理由が無かった)
+        "fp_lw_far_amount": FloatProperty(
+            name="Far lines",
+            description=(
+                "How much to hold back far lines: thinner, fewer and lighter "
+                "with distance. 1 = the Background default, 0 = off. Updates "
+                "the drawing right away"
+            ),
+            default=0.0, min=0.0, max=1.5, step=5, precision=2,
+            update=_update_far_amount
+        ),
+        "fp_lw_relief": FloatProperty(
+            name="Crush relief",
+            description=(
+                "Keep packed detail from crushing into black: fade lines that "
+                "are packed together (railings, shutters) and blur rows of "
+                "stripes that get finer than the pixels far away. Outlines stay. "
+                "1 = the Background default, 0 = off. Updates the drawing right away"
+            ),
+            default=0.0, min=0.0, max=1.5, step=5, precision=2,
+            update=_update_relief
+        ),
         "fp_lw_far_start": FloatProperty(
             name="Far start",
             description=(
@@ -484,21 +571,6 @@ def register_props():
             # 1px(1080pで0.5px)では SMAA だけとほぼ同じで、2px で段が消えた
             # (実測: 町のデモ4倍拡大)
             default=2.0, min=0.0, max=4.0, step=10, precision=1,
-            update=_update_line_weight_live
-        ),
-        "fp_lw_crowd": FloatProperty(
-            name="Keep crowded lines thin",
-            description=(
-                "Where lines are packed together, do not thicken them. "
-                "A thin rim seen edge-on turns the mesh rings into several "
-                "parallel lines that would otherwise merge into one blob. "
-                "0 = off"
-            ),
-            # 既定ON。実測でスザンヌの耳と車のグリルが黒く潰れ、
-            # 素の線より悪くなった。抑制すると潰れが解け、詰まって
-            # いない場所(キャラの輪郭など)は1画素も変わらない
-            default=1.0, min=0.0, max=1.0, step=0.05, precision=2,
-            # 他の強弱のつまみと同じく、動かしたら STEP3 ごと作り直す
             update=_update_line_weight_live
         ),
         # 段の境目。d = 1 - AO の分位点。モデルごとに15倍ひらくので
@@ -856,9 +928,9 @@ def unregister_props():
         "fp_gen_color", "fp_mask_color", "fp_line_color",
         "fp_mat_color", "fp_bone_color", "fp_enable_compositor_view",
         "fp_include_antialiasing", "fp_line_sensitivity",
-        "fp_line_weight", "fp_lw_strength", "fp_lw_density", "fp_lw_crowd",
+        "fp_line_weight", "fp_lw_strength", "fp_lw_density",
         "fp_lw_far", "fp_lw_far_sens", "fp_lw_far_fade", "fp_lw_far_start", "fp_lw_far_end",
-        "fp_lw_dense", "fp_lw_stripe_fade",
+        "fp_lw_dense", "fp_lw_stripe_fade", "fp_lw_far_amount", "fp_lw_relief",
         "fp_foliage_clumps", "fp_gap_fill", "fp_lw_ink", "fp_lw_soften",
         "fp_fine_lines", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",

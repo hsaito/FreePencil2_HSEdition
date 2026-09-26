@@ -3191,7 +3191,9 @@ def t66():
         fp_core.setup_compositor(scene, bpy.context.view_layer)   # 作り直し
         assert shown() == mode, f"{mode} を選んで作り直したら {shown()} で出た"
     # 旧トグルだけが外れたまま(古いファイル)で白を選ぶ
-    scene["fp_white_preview"] = False
+    from freepencil2.props import _write_quiet
+    _write_quiet(scene, {"fp_white_preview": False})   # 5.x では scene[...] で書いても変わらない
+    assert scene.fp_white_preview is False
     scene.fp_preview_mode = "WHITE"
     fp_core.setup_compositor(scene, bpy.context.view_layer)
     assert shown() == "WHITE", f"白を選んで作り直したら {shown()} で出た"
@@ -3379,6 +3381,26 @@ def t72():
             sock = n.inputs.get("Type")
             mode = sock.default_value if sock is not None else None
         assert mode in ("REPLACE_ALPHA", "Replace Alpha"), f"{n.name}: {mode}"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
+@test("merged sliders: Far lines / Crush relief drive the five inner values; 1.0 = background default")
+def t73():
+    # v2.8.1 でパネルを整理し、奥ほど細く/減らす/薄く と 詰まった線/縞 を2本にまとめた。
+    # STEP0(手描き背景)で 1.0 が入り、中の値が v2.8.0 の既定と同じであること。
+    # 動かすと中の値が変わり、STEP3 が作り直されること
+    from freepencil2 import line_weight
+    scene = _bg_scene()
+    assert abs(scene.fp_lw_far_amount - 1.0) < 1e-6 and abs(scene.fp_lw_relief - 1.0) < 1e-6
+    assert (scene.fp_lw_far, scene.fp_lw_far_sens, round(scene.fp_lw_far_fade, 4)) == (1.0, 2.0, 0.35)
+    assert (round(scene.fp_lw_dense, 4), scene.fp_lw_stripe_fade) == (0.6, 1.0)
+    scene.fp_lw_far_amount = 0.0
+    assert (scene.fp_lw_far, scene.fp_lw_far_sens, scene.fp_lw_far_fade) == (0.0, 1.0, 0.0)
+    tree = fp_batch.comp_tree(scene)
+    assert not any(n.label == line_weight.FAR_LABEL for n in tree.nodes), "奥の扱いを 0 にしても奥のノードが残った"
+    scene.fp_lw_relief = 0.0
+    assert (scene.fp_lw_dense, scene.fp_lw_stripe_fade) == (0.0, 0.0)
+    assert not hasattr(scene, "fp_lw_crowd"), "詰まった線は太らせない のつまみが残っている"
     bpy.ops.wm.read_homefile(use_empty=True)
 
 

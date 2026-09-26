@@ -1195,3 +1195,23 @@ msgstr "自動の判定: "
 msgctxt "*"
 msgid "Fine lines: run STEP0 with Background"
 msgstr "細い線: 仕上がり「手描き背景」で STEP0 を押すと使えます"
+
+msgctxt "*"
+msgid "Far lines"
+msgstr "奥の線を控えめに"
+
+msgctxt "*"
+msgid "How much to hold back far lines: thinner, fewer and lighter with distance. 1 = the Background default, 0 = off. Updates the drawing right away"
+msgstr "遠くの線をどれだけ控えるか。遠いほど細く・少なく・薄くします。1 = 手描き背景の既定、0 = しない。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "Crush relief"
+msgstr "つぶれ軽減"
+
+msgctxt "*"
+msgid "Keep packed detail from crushing into black: fade lines that are packed together (railings, shutters) and blur rows of stripes that get finer than the pixels far away. Outlines stay. 1 = the Background default, 0 = off. Updates the drawing right away"
+msgstr "細かい物が黒くつぶれないようにします。詰まった線（手すり・シャッター）を薄くし、奥で画素より細かくなった縞をぼかします。輪郭は残ります。1 = 手描き背景の既定、0 = しない。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "Press STEP3 after changing these"
+msgstr "変えたら STEP3 を押し直してください"

@@ -137,11 +137,7 @@ class FP_PT_Step1(_FPSub, bpy.types.Panel):
         row.prop(scene, "fp_sharp_edges", slider=True, text=t("Edge Angle"))
         col.prop(scene, "fp_seam_boundaries", text=t("Seam/material boundaries"))
         col.prop(scene, "fp_min_island_area_pct", text=t("Min island area %"))
-        col.prop(scene, "fp_foliage_clumps", text=t("Foliage clumps"))
-        col.prop(scene, "fp_ridge_amount", text=t("Ridge relief"), slider=True)
-        row = col.row(align=True)
-        row.enabled = scene.fp_ridge_amount > 0.0
-        row.prop(scene, "fp_ridge_radius", text=t("Ridge scale"), slider=True)
+        # 稜線の起伏・葉の房は STEP0 が仕上がりごとに決める(v2.8.1 でパネルから外した)
 
         # --- ボーン(キャラ用) ---
         box = layout.box()
@@ -201,9 +197,9 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         layout = self.layout
         scene = context.scene
 
+        # v2.8.1 で整理: 普段触るものだけ出し、残りは「詳細」に畳む。
+        # STEP0 がほぼ全部を決めるので、ここは見ながら加減するつまみだけ
         col = layout.column(align=True)
-        col.label(text=t("Select Node Type"))
-        col.prop(scene, "fp_node_type", text="")
         # 4.2 のビューポートコンポジタは AOV を評価しないので、ONにしても
         # プレビューは出ない。触れるままにすると誤解を招くため無効化する
         row = col.row(align=True)
@@ -220,6 +216,59 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         if scene.fp_preview_mode == 'MONO_LIGHT':
             box.prop(scene, "fp_mono_floor", text=t("Shadow floor"),
                      slider=True)
+
+        # 線の強弱(入り抜き)。くぼみが深いほど太くする
+        box = layout.box()
+        box.label(text=t("Line weight (cavities):"), icon="MOD_THICKNESS")
+        col = box.column(align=True)
+        col.prop(scene, "fp_line_weight", text=t("Line weight from cavities"))
+        sub = col.column(align=True)
+        sub.enabled = scene.fp_line_weight
+        sub.prop(scene, "fp_lw_strength", text=t("Weight strength"),
+                 slider=True)
+        # 細い線はメカの塗り(fine_color)が無いと何も起きない。手描き背景の
+        # STEP0 だけが作るので、無いときは灰色にして作り方を出す(総当りで、
+        # キャラでは動かしても絵が変わらないことが分かった)
+        obj = context.active_object
+        has_fine = (obj is not None and obj.type == 'MESH'
+                    and "fine_color" in obj.data.color_attributes)
+        row = sub.row(align=True)
+        row.enabled = has_fine
+        row.prop(scene, "fp_fine_lines", text=t("Fine lines"), slider=True)
+        if not has_fine:
+            sub.label(text=t("Fine lines: run STEP0 with Background"), icon="INFO")
+        # 奥の扱いとつぶれ軽減は、中の5つをまとめた2本(props.far_values /
+        # relief_values)。1.0 が手描き背景の既定
+        sub.prop(scene, "fp_lw_far_amount", text=t("Far lines"), slider=True)
+        sub.prop(scene, "fp_lw_relief", text=t("Crush relief"), slider=True)
+        # しきい値は絵ごとに15倍ひらくので固定値では配れない。STEP0 が
+        # 1回測る。カメラを変えたときだけ押し直す
+        sub.operator("freepencil.measure_line_weight",
+                     text=t("Measure thresholds (once per cut)"),
+                     icon="DRIVER_DISTANCE")
+
+        layout.operator(LINK_MAKE_FP_OT_NODE.bl_idname,
+                        text=t("Generate Sample Node"), icon="NODETREE")
+
+
+class FP_PT_Step3Options(bpy.types.Panel):
+    """STEP3 の詳細。STEP0 が決めるので普段は触らない(閉じておく)。"""
+
+    bl_label = "Details"
+    bl_idname = "FREEPENCIL_PT_STEP3_OPTIONS"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "FreePencil"
+    bl_parent_id = "FREEPENCIL_PT_STEP3"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        t = bpy.app.translations.pgettext
+        layout = self.layout
+        scene = context.scene
+        col = layout.column(align=True)
+        col.label(text=t("Select Node Type"))
+        col.prop(scene, "fp_node_type", text="")
         col = layout.column(align=True)
         col.prop(scene, "fp_include_antialiasing",
                  text=t("Include Anti-Aliasing Node"))
@@ -233,43 +282,13 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
             info.label(text=t("STEP5 writes the final size."), icon="BLANK1")
         col.prop(scene, "fp_line_sensitivity", text=t("Line sensitivity"))
 
-        # 線の強弱(入り抜き)。くぼみが深いほど太くする
         box = layout.box()
         box.label(text=t("Line weight (cavities):"), icon="MOD_THICKNESS")
         col = box.column(align=True)
-        col.prop(scene, "fp_line_weight", text=t("Line weight from cavities"))
-        sub = col.column(align=True)
-        sub.enabled = scene.fp_line_weight
-        sub.prop(scene, "fp_lw_strength", text=t("Weight strength"),
-                 slider=True)
-        sub.prop(scene, "fp_lw_ink", text=t("Ink darkness"), slider=True)
-        sub.prop(scene, "fp_lw_soften", text=t("Soften edges"), slider=True)
-        # 細い線はメカの塗り(fine_color)が無いと何も起きない。手描き背景の
-        # STEP0 だけが作るので、無いときは灰色にして作り方を出す(総当りで、
-        # キャラでは動かしても絵が変わらないことが分かった)
-        obj = context.active_object
-        has_fine = (obj is not None and obj.type == 'MESH'
-                    and "fine_color" in obj.data.color_attributes)
-        row = sub.row(align=True)
-        row.enabled = has_fine
-        row.prop(scene, "fp_fine_lines", text=t("Fine lines"), slider=True)
-        if not has_fine:
-            sub.label(text=t("Fine lines: run STEP0 with Background"), icon="INFO")
-        # 奥の扱い(深度パス)。町のように奥へ続くセット向け
-        far = sub.column(align=True)
-        far.prop(scene, "fp_lw_far", text=t("Thin far lines"), slider=True)
-        far.prop(scene, "fp_lw_far_sens", text=t("Fewer far lines"), slider=True)
-        far.prop(scene, "fp_lw_far_fade", text=t("Lighten far lines"), slider=True)
-        far.prop(scene, "fp_lw_dense", text=t("Fade dense lines"), slider=True)
-        far.prop(scene, "fp_lw_stripe_fade", text=t("Fade fine stripes"), slider=True)
-        far.prop(scene, "fp_gap_fill", text=t("Fill leaf gaps"))
-        sub.prop(scene, "fp_lw_crowd", text=t("Keep crowded lines thin"),
-                 slider=True)
-        # しきい値は絵ごとに15倍ひらくので固定値では配れない。STEP0 が
-        # 1回測る。カメラを変えたときだけ押し直す
-        sub.operator("freepencil.measure_line_weight",
-                     text=t("Measure thresholds (once per cut)"),
-                     icon="DRIVER_DISTANCE")
+        col.enabled = scene.fp_line_weight
+        col.prop(scene, "fp_lw_ink", text=t("Ink darkness"), slider=True)
+        col.prop(scene, "fp_lw_soften", text=t("Soften edges"), slider=True)
+        col.prop(scene, "fp_gap_fill", text=t("Fill leaf gaps"))
 
         # チャンネル別の線の強さ(生成済みノードへ即時反映)
         box = layout.box()
@@ -281,31 +300,31 @@ class FP_PT_Step3(_FPSub, bpy.types.Panel):
         col.prop(scene, "fp_ch_mat", text=t("Material"), slider=True)
         col.prop(scene, "fp_ch_gen", text=t("Generate"), slider=True)
 
-        box = layout.box()
-        box.label(text=t("File Output"), icon="FILE_FOLDER")
-        col = box.column(align=True)
-        col.prop(scene, "fp_file_output", text=t("Enable File Output"))
 
-        sub = col.column(align=True)
-        sub.enabled = scene.fp_file_output
-        sub.label(text=t("Output path"))
-        sub.prop(scene, "fp_file_output_path", text="")
-        # 書き出すパスを個別に選ぶ。チェック名がそのままファイル名になる
-        sub.label(text=t("Passes to write:"))
-        grid = sub.grid_flow(columns=2, align=True)
-        grid.prop(scene, "fp_fo_line", text="line")
-        grid.prop(scene, "fp_fo_color", text="color")
-        grid.prop(scene, "fp_fo_light", text=t("light (diffuse)"))
-        grid.prop(scene, "fp_fo_shadow", text=t("shadow"))
-        if scene.fp_file_output and not any(
-            getattr(scene, name)
-            for name in ("fp_fo_line", "fp_fo_color",
-                         "fp_fo_light", "fp_fo_shadow")
-        ):
-            col.label(text=t("No pass selected"), icon="ERROR")
-
-        layout.operator(LINK_MAKE_FP_OT_NODE.bl_idname,
-                        text=t("Generate Sample Node"), icon="NODETREE")
+def draw_file_output(layout, scene, t):
+    """書き出しの設定。STEP5(カメラ一括)が使うので STEP5 に置く。"""
+    box = layout.box()
+    box.label(text=t("File Output"), icon="FILE_FOLDER")
+    col = box.column(align=True)
+    col.prop(scene, "fp_file_output", text=t("Enable File Output"))
+    sub = col.column(align=True)
+    sub.enabled = scene.fp_file_output
+    sub.label(text=t("Output path"))
+    sub.prop(scene, "fp_file_output_path", text="")
+    # 書き出すパスを個別に選ぶ。チェック名がそのままファイル名になる
+    sub.label(text=t("Passes to write:"))
+    grid = sub.grid_flow(columns=2, align=True)
+    grid.prop(scene, "fp_fo_line", text="line")
+    grid.prop(scene, "fp_fo_color", text="color")
+    grid.prop(scene, "fp_fo_light", text=t("light (diffuse)"))
+    grid.prop(scene, "fp_fo_shadow", text=t("shadow"))
+    if scene.fp_file_output and not any(
+        getattr(scene, name)
+        for name in ("fp_fo_line", "fp_fo_color", "fp_fo_light", "fp_fo_shadow")
+    ):
+        col.label(text=t("No pass selected"), icon="ERROR")
+    if scene.fp_file_output:
+        col.label(text=t("Press STEP3 after changing these"), icon="INFO")
 
 
 class FP_PT_Cameras(_FPSub, bpy.types.Panel):
@@ -318,6 +337,8 @@ class FP_PT_Cameras(_FPSub, bpy.types.Panel):
         layout = self.layout
         scene = context.scene
 
+        # 書き出しの設定(v2.8.1 で STEP3 から移した。使うのはこのボタン)
+        draw_file_output(layout, scene, t)
         cams = sorted((o for o in scene.objects if o.type == "CAMERA"),
                       key=lambda o: o.name.lower())
         if not cams:

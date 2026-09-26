@@ -131,6 +131,11 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         # 細かすぎる縞を奥ほど薄く。低い視点から水平の線の多い面を見ると、奥が
         # つぶれて動かすとちらついた(試験場 test_grazing で総当り)
         scene.fp_lw_stripe_fade = 1.0 if background else 0.0
+        # パネルのつまみ(上の5つをまとめた2本)。1.0 が上の値と同じ。更新フック
+        # を動かすと STEP0 の途中で STEP3 を作り直すので、フックを止めて書く
+        from .props import _write_quiet
+        _write_quiet(scene, {"fp_lw_far_amount": 1.0 if background else 0.0,
+                             "fp_lw_relief": 1.0 if background else 0.0})
         # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
         scene.fp_foliage_clumps = 4 if background else 0
         # 細い線(精密の分割)を薄く重ねる。背景は 0.6。線を太くせず本数で
