@@ -87,15 +87,75 @@ figure.slot figcaption {
   font-size: 14px; line-height: 1.8; color: #333;
 }
 .howto b { color: #1a1a1a; }
-@media print { body { background: #fff; } main { max-width: none; } }
+.copybar {
+  position: sticky; top: 0; z-index: 5; display: flex; gap: 10px;
+  align-items: center; margin: 0 -20px 24px; padding: 10px 20px;
+  background: #fff; border-bottom: 1px solid #e6e6e6;
+}
+.copybar button {
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  padding: 8px 14px; border-radius: 6px; border: 1px solid #1f6feb;
+  background: #1f6feb; color: #fff;
+}
+.copybar button.sub { background: #fff; color: #1f6feb; }
+.copybar button:focus-visible { outline: 3px solid #9cc3ff; outline-offset: 2px; }
+.copybar .msg { font-size: 13px; color: #1b7f3b; }
+.part { position: relative; }
+.titlebox {
+  margin: 0 0 28px; padding: 12px 14px; border: 1px solid #dfe4ea;
+  border-radius: 8px; background: #fafbfc;
+}
+.titlebox .lbl { font-size: 12px; color: #666; margin-bottom: 4px; }
+.titlebox .t { font-size: 18px; font-weight: 700; line-height: 1.5; }
+@media print { body { background: #fff; } main { max-width: none; } .copybar { display: none; } }
+"""
+
+# コピーするときは、画像の帯を「［画像N をここに：ファイル名］」の1行に置き換える。
+# note には画像を貼れないので、アップロードする位置の目印だけ残す
+COPY_JS = """
+<script>
+function fpClean(el){
+  const c = el.cloneNode(true);
+  c.querySelectorAll('figure.slot').forEach(f => {
+    const tag = f.querySelector('.tag span');
+    const file = f.querySelector('.file');
+    const cap = f.querySelector('figcaption');
+    const p = document.createElement('p');
+    p.textContent = '［' + (tag ? tag.textContent.replace('▼ ', '').replace(' をここに挿入', '') : '画像')
+      + ' をここに：' + (file ? file.textContent.replace('img/', '') : '') + '］'
+      + (cap ? '　キャプション：' + cap.textContent : '');
+    f.replaceWith(p);
+  });
+  c.querySelectorAll('.paywall').forEach(e => e.remove());
+  return c;
+}
+function fpCopy(id, btn){
+  const src = document.getElementById(id);
+  const c = fpClean(src);
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:-99999px;top:0;';
+  box.appendChild(c);
+  document.body.appendChild(box);
+  const r = document.createRange(); r.selectNodeContents(c);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  sel.removeAllRanges(); box.remove();
+  const msg = document.getElementById('fp-msg');
+  const name = btn.textContent.replace(/\s*をコピー$/, '');
+  msg.textContent = ok ? name + ' をコピーしました。note の編集画面に貼ってください'
+                       : 'コピーできませんでした。本文を選択して Ctrl+C でコピーしてください';
+}
+</script>
 """
 
 HOWTO = """<div class="howto">
-<b>使い方</b> — この下から本文です。ブラウザで選択してコピーし、note の
-編集画面に貼ると見出しと太字が残ります。<b>青と紫の帯は画像の置き場所</b>で、
-本文には含めません。その位置に <b>img/</b> の中の該当ファイルを note へ
-アップロードし、帯の下のグレーの文をキャプション欄に入れてください。
-赤い破線が有料ラインです。
+<b>使い方</b> — 上のボタンで「タイトル」「無料部分」「有料部分」をコピーし、
+note の編集画面に貼ってください（見出し・太字・箇条書きが残ります）。
+<b>青い帯は画像の置き場所</b>です。貼った本文では「［画像N をここに：ファイル名］」の
+1行になっているので、そこへ <b>img/</b> の同じファイルをアップロードし、
+キャプションを入れてから、その1行を消してください。
+赤い破線の位置が有料ラインです。
 </div>"""
 
 
@@ -138,17 +198,32 @@ def main() -> None:
     if missing:
         raise SystemExit("画像が無い: " + ", ".join(missing))
 
-    # 有料ラインを見出しの直前に差し込む
+    # タイトルは note では別の欄に入れるので、本文から外して上に出す
+    body = re.sub(r"^<h1>.*?</h1>\s*", "", body, count=1, flags=re.S)
+    # 有料ラインで無料/有料の2つに分け、それぞれコピーできるようにする
     pay = f"<h2>{PAYWALL}</h2>"
     if pay in body:
-        body = body.replace(
-            pay, '<div class="paywall">──── ここから有料 ────</div>' + pay, 1)
+        free, paid = body.split(pay, 1)
+        paid = pay + paid
+        body = (f'<div class="part" id="free">{free}</div>'
+                '<div class="paywall">──── ここから有料 ────</div>'
+                f'<div class="part" id="paid">{paid}</div>')
+        buttons = ("<button onclick=\"fpCopy('free', this)\">無料部分をコピー</button>"
+                   "<button onclick=\"fpCopy('paid', this)\">有料部分をコピー</button>")
+    else:
+        body = f'<div class="part" id="free">{body}</div>'
+        buttons = "<button onclick=\"fpCopy('free', this)\">本文をコピー</button>"
+    bar = ('<div class="copybar">'
+           "<button class=\"sub\" onclick=\"fpCopy('title', this)\">タイトルをコピー</button>"
+           f'{buttons}<span class="msg" id="fp-msg" role="status" aria-live="polite"></span></div>')
+    titlebox = (f'<div class="titlebox"><div class="lbl">タイトル（note のタイトル欄へ）</div>'
+                f'<div class="t" id="title">{html.escape(TITLE)}</div></div>')
 
     OUT.write_text(
         '<!doctype html><html lang="ja"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{html.escape(TITLE)}（note 貼り付け用）</title>"
-        f"<style>{CSS}</style></head><body><main>{HOWTO}{body}</main>"
+        f"<style>{CSS}</style>{COPY_JS}</head><body><main>{bar}{HOWTO}{titlebox}{body}</main>"
         "</body></html>", encoding="utf-8")
     print(f"{OUT}  スロット {n} 個  {OUT.stat().st_size // 1024} KB")
 
