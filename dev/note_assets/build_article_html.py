@@ -19,7 +19,10 @@ from pathlib import Path
 import markdown
 
 ROOT = Path(__file__).resolve().parents[2]
-DIR = ROOT / "note" / "v27_article"
+import sys as _sys
+# 記事のフォルダ(既定は v2.7)。  --dir note/v28_article
+DIR = (ROOT / _sys.argv[_sys.argv.index("--dir") + 1] if "--dir" in _sys.argv
+       else ROOT / "note" / "v27_article")
 SRC = DIR / "本文.md"
 OUT = DIR / "貼り付け用.html"
 
@@ -114,8 +117,11 @@ MARKER = re.compile(
 
 
 def main() -> None:
+    src = SRC.read_text(encoding="utf-8")
+    global TITLE
+    TITLE = next((ln[2:].strip() for ln in src.splitlines() if ln.startswith("# ")), "note")
     body = markdown.markdown(
-        SRC.read_text(encoding="utf-8"),
+        src,
         extensions=["tables", "fenced_code", "sane_lists", "nl2br"],
     )
 
@@ -141,7 +147,7 @@ def main() -> None:
     OUT.write_text(
         '<!doctype html><html lang="ja"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        "<title>FreePencil2 v2.7 リリースしました！（note 貼り付け用）</title>"
+        f"<title>{html.escape(TITLE)}（note 貼り付け用）</title>"
         f"<style>{CSS}</style></head><body><main>{HOWTO}{body}</main>"
         "</body></html>", encoding="utf-8")
     print(f"{OUT}  スロット {n} 個  {OUT.stat().st_size // 1024} KB")
