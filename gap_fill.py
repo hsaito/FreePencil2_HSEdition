@@ -25,11 +25,13 @@ def apply(tree, scene, rl, group_node) -> int:
     px = max(0, round(px * pct / 200.0))          # 200% 基準の px
     if px <= 0:
         return 0
-    alpha = rl.outputs.get("Alpha")
+    x, y = group_node.location.x - 700, group_node.location.y - 900
+    # 背景が不透明(既定)だとレンダーのアルファは全面 1 で、穴が見つからず
+    # 何も埋まらなかった。背景の透過に左右されないシルエットを使う
+    alpha = line_weight.silhouette(tree, rl, scene, x - 320, y, label=NODE_LABEL)
     dst_a = group_node.inputs.get("Alpha")
     if alpha is None or dst_a is None:
         return 0
-    x, y = group_node.location.x - 700, group_node.location.y - 900
     made = []
 
     def new(idn, dx, dy):

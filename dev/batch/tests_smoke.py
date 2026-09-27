@@ -3468,6 +3468,29 @@ def t75():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("character line weight is the same with an opaque (default) or transparent background")
+def t76():
+    # 強弱は物の外をレンダーのアルファで見ていて、背景が不透明(Blender の既定)だと
+    # アルファが全面 1 になり、輪郭の強弱がほとんど出なかった。試験やデモはどれも
+    # 背景を透過にしていて気付かなかった(画像で確認)。深度の側を 1px 広げた
+    # 直し方でも、物の外の 1px が「物の中」になって輪郭の外側が細く、0.81 で落ちる
+    import shutil
+    import tempfile
+    import numpy as np
+    scene = _bg_scene("WEIGHTED")
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t76_"))
+    try:
+        scene.render.film_transparent = True
+        clear = _render_gray(scene, tmp / "t.png")
+        scene.render.film_transparent = False
+        opaque = _render_gray(scene, tmp / "o.png")
+        ink_t, ink_o = float(clear.sum()), float(opaque.sum())
+        assert ink_o > ink_t * 0.85, f"背景が不透明だと線が細い: 透過 {ink_t:.0f} / 不透明 {ink_o:.0f}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

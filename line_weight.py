@@ -239,6 +239,46 @@ def blur_from_scene(scene) -> int:
     return max(0, round(px * pct / 200.0))
 
 
+def silhouette(tree, rl, scene, x, y, label=None):
+    """「物のある所」を 0..1 で。背景の透過(film_transparent)に左右されない。
+
+    レンダーのアルファは、背景が不透明(Blender の既定)だと画面全体で 1 に
+    なり、物の外が分からなかった。強弱は物の外を「開いた所」として輪郭を
+    太らせるので、既定の設定ではキャラの輪郭の強弱がほとんど出なかった
+    (v2.8.1 の点検で発見。試験やデモはどれも背景を透過にしていた)。
+    深度は背景で必ずカメラの遠い端になる(4.5: クリップ距離、5.2: 半精度の
+    最大)ので、「アルファ x (深度が遠い端より手前)」にする。背景を透過に
+    していれば今までと同じ値(アンチエイリアスの縁も残る)。
+    """
+    alpha = rl.outputs.get("Alpha")
+    if alpha is None:
+        return None
+    depth = compat.render_layer_socket(rl, DEPTH_SOCKETS)
+    if depth is None:
+        return alpha
+    cam = scene.camera
+    clip = float(cam.data.clip_end) if cam is not None and cam.type == 'CAMERA' else 1000.0
+    near = _math(tree, "LESS_THAN", x, y, b=clip * 0.999)
+    tree.links.new(depth, near.inputs[0])
+    # 深度で切るのはアルファが 1 の所だけ。アルファが半端な所(背景透過の
+    # アンチエイリアスの縁)はアルファをそのまま使う。5.2 は縁の画素の深度が
+    # 背景と混ざって遠くなり、縁ごと切ると線が点線になった(画像で確認)。
+    # 深度の側を 1px 広げて逃げると、不透明の背景では物の外の 1px が
+    # 「物の中」になり、輪郭の外側が 1〜2px 細くなった(t76 で確認)
+    edge = _math(tree, "LESS_THAN", x, y - 40, b=0.999)
+    tree.links.new(alpha, edge.inputs[0])
+    keep = _math(tree, "MAXIMUM", x + 60, y)
+    tree.links.new(near.outputs[0], keep.inputs[0])
+    tree.links.new(edge.outputs[0], keep.inputs[1])
+    mul = _math(tree, "MULTIPLY", x + 120, y)
+    tree.links.new(alpha, mul.inputs[0])
+    tree.links.new(keep.outputs[0], mul.inputs[1])
+    for n in (near, edge, keep, mul):
+        n.label = label or NODE_LABEL
+        n.hide = True
+    return mul.outputs[0]
+
+
 def dep_chain(tree, ao_sock, alpha_sock, scene, x0, y0):
     """AO から「くぼみの深さ d = 1 - AO」を作る。合成と計測の両方が使う。
 
@@ -885,7 +925,9 @@ def apply(scene, view_layer, tree, target_socket):
     apply_far_sens(tree, scene, depth)
     line_sock = target_socket.links[0].from_socket
     out, ink_sock = build_weight(tree, line_sock, ao, scene,
-                                 alpha_sock=rl.outputs.get("Alpha"),
+                                 alpha_sock=silhouette(tree, rl, scene,
+                                                       rl.location.x + 200,
+                                                       rl.location.y - 900),
                                  depth_sock=depth)
     for lnk in list(target_socket.links):
         tree.links.remove(lnk)
@@ -1160,6 +1202,23 @@ def apply_far_sens(tree, scene, depth_sock):
         rl = next((n for n in tree.nodes if n.type == "R_LAYERS"), None)
         if rl is not None and "Alpha" in rl.outputs:
             tree.links.new(rl.outputs["Alpha"], gnode.inputs["Alpha"])
+    # 奥度はシルエットの中だけで取る。グループの Alpha がレンダーのアルファ
+    # そのもの(背景が不透明だと全面 1)なら、背景の透過に左右されない Sil を
+    # 別の入口で渡す。隙間埋め(gap_fill)が先に Alpha へ「狭い穴を閉じた
+    # シルエット」を入れていれば、それをそのまま使う(今までと同じ絵)
+    rl = next((n for n in tree.nodes if n.type == "R_LAYERS"), None)
+    a_in = gnode.inputs.get("Alpha")        # テストノードには無い
+    raw = rl is not None and (
+        a_in is None or not a_in.is_linked
+        or a_in.links[0].from_socket == rl.outputs.get("Alpha"))
+    sil = silhouette(tree, rl, scene, gnode.location.x - 400,
+                     gnode.location.y - 1100, label=FAR_LABEL) if raw else None
+    if sil is not None:
+        if "Sil" not in [i.name for i in gnode.inputs]:
+            group.interface.new_socket("Sil", in_out="INPUT", socket_type="NodeSocketFloat")
+        tree.links.new(sil, gnode.inputs["Sil"])
+        if "Sil" in gi.outputs:
+            alpha = gi.outputs["Sil"]
     # 線の検出は Sobel の 1〜2px 幅なので、伸ばす量は少なくてよい
     far = far_chain(group, gi.outputs["Depth"], alpha, scene, -900, -900,
                     spread=6, label=FAR_LABEL)
@@ -1399,10 +1458,12 @@ def measure_edges(scene, view_layer, percent=100):
     if ao_sock is None:
         tree.nodes.remove(fo)
         return None
-    for name, sock in (("line", line_src),
-                       # アルファは線の絵ではなくレンダーレイヤーから取る。
-                       # 線の絵は縮小の有無で大きさが変わる
-                       ("sil", rl.outputs["Alpha"])):
+    sil_start = len(tree.nodes)
+    # シルエットは線の絵ではなくレンダーレイヤーから取る(線の絵は縮小の有無で
+    # 大きさが変わる)。背景の透過に左右されないもの
+    sil_sock = silhouette(tree, rl, scene, -600, -300)
+    sil_nodes = list(tree.nodes)[sil_start:]
+    for name, sock in (("line", line_src), ("sil", sil_sock)):
         compat.file_output_add_slot(fo, name, "PNG", "RGBA")
         # 5.x は file_output_items と inputs の並びが一致しないことが
         # あるので、末尾ではなく名前で挿す(fp_core と同じやり方)
@@ -1411,7 +1472,7 @@ def measure_edges(scene, view_layer, percent=100):
     # ノード単位でしか形式を持てないので、EXR 用にもう1つ置く
     scene.render.resolution_percentage = percent   # blur_from_scene が見る
     chain_start = len(tree.nodes)
-    dep = dep_chain(tree, ao_sock, rl.outputs.get("Alpha"), scene,
+    dep = dep_chain(tree, ao_sock, silhouette(tree, rl, scene, -800, -600), scene,
                     x0=-600, y0=-600)
     chain_nodes = list(tree.nodes)[chain_start:]
     scene.render.resolution_percentage = keep_pct
@@ -1463,7 +1524,7 @@ def measure_edges(scene, view_layer, percent=100):
     finally:
         tree.nodes.remove(fo)
         tree.nodes.remove(fo2)
-        for n in chain_nodes:
+        for n in chain_nodes + sil_nodes:
             tree.nodes.remove(n)
         if not was_white:
             fp_core.set_white_preview(scene, False)
