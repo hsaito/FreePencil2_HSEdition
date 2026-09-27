@@ -286,8 +286,10 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         # 白マテリアルでプレビュー。線画がすぐ見える状態にして終わる。
         # コンポジタ切替方式なのでマテリアル自体は触らない。必ず STEP3 で
         # コンポジタが建った後に立てること(先に立てても差し込む先が無い)
-        if scene.fp_auto_white_preview and not scene.fp_white_preview:
-            scene.fp_white_preview = True
+        # 種類で見る(旧トグルは v2.7 のファイルで立ったまま残っていることがあり、
+        # それを見て「もう白だ」と飛ばしていた)
+        if scene.fp_auto_white_preview and scene.fp_preview_mode != "WHITE":
+            scene.fp_preview_mode = "WHITE"
 
         # BLEND は AOV が書かれない → 本物のガラス以外は HASHED へ
         hashed = 0

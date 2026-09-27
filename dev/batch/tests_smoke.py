@@ -3426,6 +3426,48 @@ def t74():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("a v2.7 file with white preview keeps white after reopening and STEP3 / STEP0")
+def t75():
+    # v2.7 は白プレビューを ON/OFF で持っていて、種類(fp_preview_mode)は無かった。
+    # 2.8.1 で開いて STEP3 か STEP0 を押すと白が外れ、材質の色で出た(上書き
+    # インストールの点検で、v2.7 で作ったファイルで確認)
+    import shutil
+    import tempfile
+    from freepencil2 import fp_core
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t75_"))
+    try:
+        scene = _bg_scene("PRECISE")
+        # v2.7 のファイルの状態: 旧トグルだけ立っていて、種類は一度も書かれていない
+        scene.property_unset("fp_preview_mode")
+        from freepencil2.props import _write_quiet
+        _write_quiet(scene, {"fp_white_preview": True})
+        scene.property_unset("fp_preview_mode")
+        assert not scene.is_property_set("fp_preview_mode")
+        f = tmp / "v27like.blend"
+        bpy.ops.wm.save_as_mainfile(filepath=str(f))
+        bpy.ops.wm.open_mainfile(filepath=str(f))
+        scene = bpy.context.scene
+        assert scene.fp_preview_mode == "WHITE", f"開いたら種類が {scene.fp_preview_mode}"
+
+        def shown():
+            tree = fp_batch.comp_tree(scene)
+            mix = next((n for n in tree.nodes if n.label == fp_core.WHITE_MIX_LABEL), None)
+            return mix is not None and mix.inputs[0].default_value > 0.5
+
+        bpy.ops.freepencil2.link_button()
+        assert shown(), "STEP3 を押したら白が外れた"
+        bpy.ops.object.select_all(action="DESELECT")
+        for o in scene.objects:
+            if o.type == "MESH":
+                o.select_set(True)
+                bpy.context.view_layer.objects.active = o
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        assert shown(), "STEP0 を押したら白が外れた"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

@@ -84,7 +84,27 @@ def _render_post(scene, _depsgraph=None):
 # 2倍のキャンバスに半分の絵が入った(実測: 被写体の幅 0.50)。
 # render_init/complete(レンダー全体の前後)なら F12 もアニメーションも
 # 等倍で出る(実測: 幅 1.00)
+@persistent
+def _migrate_preview_mode(_dummy=None):
+    """v2.7 以前のファイルを開いたら、白プレビューを「プレビューの種類」へ移す。
+
+    v2.7 までは白プレビューを ON/OFF の1つで持っていて、種類は無かった。
+    2.8.1 は種類だけを見るので、白プレビュー中の v2.7 のファイルを開いて
+    STEP3 か STEP0 を押すと、白が外れて材質の色で出た(上書きインストールの
+    点検で発見)。種類が一度も書かれていないファイルだけを移す。
+    """
+    from .props import _write_quiet
+    for scene in bpy.data.scenes:
+        if not hasattr(scene, "fp_preview_mode"):
+            return
+        if scene.is_property_set("fp_preview_mode"):
+            continue
+        if getattr(scene, "fp_white_preview", False):
+            _write_quiet(scene, {"fp_preview_mode": "WHITE"})
+
+
 _HANDLERS = (
+    ("load_post", _migrate_preview_mode),
     ("render_init", _render_pre),
     ("render_complete", _render_post),
     ("render_cancel", _render_post),
