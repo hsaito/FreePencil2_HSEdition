@@ -349,14 +349,23 @@ def set_mono_light_preview(scene: bpy.types.Scene, enable: bool,
         return 0
 
     if not enable:
-        # 元の配線(RenderLayers の Image)へ戻してから撤去する
+        # 立てる前に Image へ入っていた所(白プレビューの Mix か RenderLayers
+        # の Image)へ戻してから撤去する。以前は撤去するノードの入力元を
+        # 戻していて、それはディフューズ直接光のパスだった。モノクロ ->
+        # マテリアルで陰影が残り、そのあと白を選んでも白にならなかった
+        # (白の Mix が外れたまま。GUI で確認)
         src = None
         for n in made:
-            for i in n.inputs:
-                for lk in i.links:
-                    if lk.from_node.label not in (MONO_LABEL, WHITE_MIX_LABEL):
-                        src = lk.from_socket
-                        break
+            node = tree.nodes.get(n.get("fp_prev_node", ""))
+            idx = int(n.get("fp_prev_out", 0))
+            if node is not None and idx < len(node.outputs):
+                src = node.outputs[idx]
+                break
+        if src is None:
+            mix = next((n for n in tree.nodes if n.label == WHITE_MIX_LABEL), None)
+            rl = next((n for n in tree.nodes if n.type == 'R_LAYERS'), None)
+            src = (mix.outputs[0] if mix is not None
+                   else rl.outputs.get("Image") if rl is not None else None)
         for n in made:
             tree.nodes.remove(n)
         if src is not None and not img_in.is_linked:
@@ -370,6 +379,15 @@ def set_mono_light_preview(scene: bpy.types.Scene, enable: bool,
     if light is None:
         return 0
 
+    # 立てる前の Image の入力元を覚えておく(下ろすときに戻す)。押し直しでは
+    # 自分のノードが入っているので、前回覚えた値を引き継ぐ
+    prev = next(((n["fp_prev_node"], n.get("fp_prev_out", 0))
+                 for n in made if n.get("fp_prev_node")), None)
+    if prev is None and img_in.is_linked:
+        lk = img_in.links[0]
+        if lk.from_node.label != MONO_LABEL:
+            prev = (lk.from_node.name,
+                    list(lk.from_node.outputs).index(lk.from_socket))
     for n in made:                      # 何度押しても増やさない
         tree.nodes.remove(n)
 
@@ -377,6 +395,8 @@ def set_mono_light_preview(scene: bpy.types.Scene, enable: bool,
 
     bw = compat.new_node(tree, "CompositorNodeRGBToBW")
     bw.label = MONO_LABEL
+    if prev is not None:
+        bw["fp_prev_node"], bw["fp_prev_out"] = prev[0], int(prev[1])
     bw.location = (x, y)
     bw.hide = True
     tree.links.new(light, bw.inputs[0])

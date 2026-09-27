@@ -3535,6 +3535,29 @@ def t77():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("preview: mono -> material -> white brings the white preview back")
+def t78():
+    # モノクロを下ろすとき、撤去するノードの入力元(ディフューズ直接光)を
+    # Image へつないでいた。モノクロ -> マテリアルで陰影だけの絵になり、
+    # そのあと白を選んでも白にならなかった(GUI のビューポートで発見)
+    import shutil
+    import tempfile
+    import numpy as np
+    scene = _bg_scene("WEIGHTED")
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t78_"))
+    try:
+        scene.fp_preview_mode = "WHITE"
+        white0 = _render_gray(scene, tmp / "w0.png")
+        for m in ("MONO_LIGHT", "NONE", "WHITE"):
+            scene.fp_preview_mode = m
+        white1 = _render_gray(scene, tmp / "w1.png")
+        d = float(np.abs(white0 - white1).mean())
+        assert d < 0.002, f"モノクロ -> マテリアル -> 白 で白に戻らない(平均差 {d:.4f})"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()
