@@ -85,13 +85,20 @@ def create_node_tree_freepencil_v1_1_0_pro():
     # 旧 Normalize は背景(遠クリップ)が分母を支配し、シーン内部の
     # 深度差(家具の前後など)が 0.001 以下に潰れて線にならなかった。
     # 相対勾配は「深度が何%変わったか」なのでシーンスケールに依らない
+    #
+    # v2.8.1: |Laplace(1/Z')| * Z' * 11 に変更(Z' = Z+0.5)。相対勾配は平らな
+    # 地面で奥ほど大きくなり(Z に比例)、地平線の手前が太い黒帯になった。
+    # 斜めから見た箱の側面も真っ黒だった。1/Z は平面上で画面座標の一次式
+    # なので Laplace は平面でちょうど 0、物の前後の段差では「深度が何割
+    # 変わったか」に比例する(Sobel の 4ΔZ/Z に対し 3/8 ΔZ/Z -> 係数 11)。
+    # 実モデル 6 体(精密/キャラ)で差 0.04% 以下、地平線は 1 本の線になる
     n_3 = ng.nodes.new(_nt('CompositorNodeMath'))
     n_3.name = 'Normalize'  # 旧ノード名を維持(参照互換)
     n_3.label = 'freepencil'
     n_3.location = (-1373.765380859375, 178.70384216308594)
     n_3.hide = True
     n_3.width = 100.0
-    n_3.operation = 'DIVIDE'
+    n_3.operation = 'MULTIPLY'
     n_3.use_clamp = True
 
     n_3b = ng.nodes.new(_nt('CompositorNodeMath'))
@@ -103,13 +110,36 @@ def create_node_tree_freepencil_v1_1_0_pro():
     n_3b.operation = 'ADD'
     n_3b.inputs[1].default_value = 0.5
 
+    n_3c = ng.nodes.new(_nt('CompositorNodeMath'))
+    n_3c.name = 'DepthInv'
+    n_3c.label = 'freepencil'
+    n_3c.location = (-1373.765380859375, 240.0)
+    n_3c.hide = True
+    n_3c.operation = 'DIVIDE'
+    n_3c.inputs[0].default_value = 1.0
+
+    n_3d = ng.nodes.new(_nt('CompositorNodeMath'))
+    n_3d.name = 'DepthLapAbs'
+    n_3d.label = 'freepencil'
+    n_3d.location = (-1300.0, 136.0)
+    n_3d.hide = True
+    n_3d.operation = 'ABSOLUTE'
+
+    n_3e = ng.nodes.new(_nt('CompositorNodeMath'))
+    n_3e.name = 'DepthLapGain'
+    n_3e.label = 'freepencil'
+    n_3e.location = (-1260.0, 136.0)
+    n_3e.hide = True
+    n_3e.operation = 'MULTIPLY'
+    n_3e.inputs[1].default_value = 11.0
+
     n_4 = ng.nodes.new('CompositorNodeFilter')
     n_4.name = 'Filter.001'
     n_4.label = 'freepencil'
     n_4.location = (-1370.630859375, 136.13937377929688)
     n_4.hide = True
     n_4.width = 100.0
-    _set_filter(n_4, 'SOBEL')
+    _set_filter(n_4, 'LAPLACE')
     n_4.inputs[0].default_value = 1.0
 
     n_5 = ng.nodes.new('NodeReroute')
@@ -781,9 +811,10 @@ def create_node_tree_freepencil_v1_1_0_pro():
     # Debug: リンク情報
     # Link 0: Group Input[Alpha] -> Mix[Fac]
     ng.links.new(n_13.outputs[1], n_22.inputs[0])
-    # Link 1: Group Input[Depth] -> Sobel(生Z) と 分母(Z+0.5) [相対深度勾配]
-    ng.links.new(n_13.outputs[2], n_4.inputs[1])
+    # Link 1: Group Input[Depth] -> Z+0.5 -> 1/(Z+0.5) -> Laplace
     ng.links.new(n_13.outputs[2], n_3b.inputs[0])
+    ng.links.new(n_3b.outputs[0], n_3c.inputs[1])
+    ng.links.new(n_3c.outputs[0], n_4.inputs[1])
     # Link 2: Group Input[mecha_color] -> Mix[Image]
     ng.links.new(n_13.outputs[3], n_22.inputs[2])
     # Link 3: Group Input[bone_color] -> Mix.001[Image]
@@ -806,8 +837,10 @@ def create_node_tree_freepencil_v1_1_0_pro():
     ng.links.new(n_7.outputs[0], n_8.inputs[1])
     # Link 12: Filter[Image] -> ColorRamp[Fac]  (color->float: RGB average)
     link_avg(n_21.outputs[0], n_25.inputs[0])
-    # Link 13: Sobel(Z) -> ÷(Z+0.5) -> ColorRamp.001[Fac] [相対深度勾配]
-    link_avg(n_4.outputs[0], n_3.inputs[0])
+    # Link 13: Laplace(1/Z') -> |.| -> x11 -> x Z' -> ColorRamp.001[Fac]
+    link_avg(n_4.outputs[0], n_3d.inputs[0])
+    ng.links.new(n_3d.outputs[0], n_3e.inputs[0])
+    ng.links.new(n_3e.outputs[0], n_3.inputs[0])
     ng.links.new(n_3b.outputs[0], n_3.inputs[1])
     ng.links.new(n_3.outputs[0], n_26.inputs[0])
     # Link 14: Filter.002[Image] -> ColorRamp.002[Fac]  (color->float: RGB average)

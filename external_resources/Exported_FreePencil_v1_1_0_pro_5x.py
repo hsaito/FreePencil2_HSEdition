@@ -90,7 +90,8 @@ def create_node_tree_freepencil_v1_1_0_pro():
     n_3.location = (-1373.765380859375, 178.70384216308594)
     n_3.hide = True
     n_3.width = 100.0
-    n_3.operation = 'DIVIDE'
+    # v2.8.1: 深度は |Laplace(1/Z')| * Z' * 11(Z' = Z+0.5)。4.x 版の説明を参照
+    n_3.operation = 'MULTIPLY'
     _s = _in(n_3, 2, 'Value')
     if _s is not None:
         _s.default_value = 0.5
@@ -109,6 +110,33 @@ def create_node_tree_freepencil_v1_1_0_pro():
     if _s is not None:
         _s.default_value = 0.5
 
+    n_4i = ng.nodes.new('ShaderNodeMath')
+    n_4i.name = 'DepthInv'
+    n_4i.label = 'freepencil'
+    n_4i.location = (-1373.765380859375, 240.0)
+    n_4i.hide = True
+    n_4i.operation = 'DIVIDE'
+    _s = _in(n_4i, 0, 'Value')
+    if _s is not None:
+        _s.default_value = 1.0
+
+    n_4a = ng.nodes.new('ShaderNodeMath')
+    n_4a.name = 'DepthLapAbs'
+    n_4a.label = 'freepencil'
+    n_4a.location = (-1240.0, 106.0)
+    n_4a.hide = True
+    n_4a.operation = 'ABSOLUTE'
+
+    n_4g = ng.nodes.new('ShaderNodeMath')
+    n_4g.name = 'DepthLapGain'
+    n_4g.label = 'freepencil'
+    n_4g.location = (-1200.0, 106.0)
+    n_4g.hide = True
+    n_4g.operation = 'MULTIPLY'
+    _s = _in(n_4g, 1, 'Value')
+    if _s is not None:
+        _s.default_value = 11.0
+
     n_5 = ng.nodes.new('CompositorNodeFilter')
     n_5.name = 'Filter.001'
     n_5.label = 'freepencil'
@@ -120,7 +148,7 @@ def create_node_tree_freepencil_v1_1_0_pro():
         _s.default_value = 1.0
     _s = _in(n_5, 2, 'Type')
     if _s is not None:
-        _s.default_value = 'Sobel'
+        _s.default_value = 'Laplace'
 
     n_6 = ng.nodes.new('NodeReroute')
     n_6.name = 'Reroute.007'
@@ -1685,8 +1713,9 @@ def create_node_tree_freepencil_v1_1_0_pro():
 
     # links:
     _link(n_14, 1, 'Alpha', n_23, 0, 'Factor')
-    _link(n_14, 2, 'Depth', n_5, 0, 'Image')
     _link(n_14, 2, 'Depth', n_4, 0, 'Value')
+    _link(n_4, 0, 'Value', n_4i, 1, 'Value')
+    _link(n_4i, 0, 'Value', n_5, 0, 'Image')
     _link(n_14, 3, 'mecha_color', n_23, 7, 'B')
     _link(n_14, 4, 'bone_color', n_1, 7, 'B')
     _link(n_14, 5, 'gen_color', n_8, 7, 'B')
@@ -1695,7 +1724,9 @@ def create_node_tree_freepencil_v1_1_0_pro():
     _link(n_14, 6, 'mask_color', n_13, 0, 'Input')
     _link(n_6, 0, 'Output', n_45, 1, 'color')
     _link(n_58, 0, 'Value', n_26, 0, 'Factor')
-    _link(n_59, 0, 'Value', n_3, 0, 'Value')
+    _link(n_59, 0, 'Value', n_4a, 0, 'Value')
+    _link(n_4a, 0, 'Value', n_4g, 0, 'Value')
+    _link(n_4g, 0, 'Value', n_3, 0, 'Value')
     _link(n_4, 0, 'Value', n_3, 1, 'Value')
     _link(n_3, 0, 'Value', n_27, 0, 'Factor')
     _link(n_60, 0, 'Value', n_15, 0, 'Factor')

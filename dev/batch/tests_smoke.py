@@ -3491,6 +3491,50 @@ def t76():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("ground to the horizon: no thick black band (precise)")
+def t77():
+    # 深度チャンネルが相対勾配 |∇Z|/Z で、平らな地面では奥ほど大きくなり、
+    # 地平線の手前が太い黒帯になった(精密/キャラ。画像で確認)。深度を
+    # |Laplace(1/Z)|*Z にして、平面では 0 になるようにした。モデルの写って
+    # いない左端の帯で、線の画素が地平線1本分(数%)に収まること
+    import math
+    import shutil
+    import tempfile
+    import numpy as np
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.mesh.primitive_plane_add(size=60, location=(0, 20, 0))
+    ground = bpy.context.object
+    bpy.ops.mesh.primitive_monkey_add(size=1.6, location=(0, 0, 0.9))
+    monkey = bpy.context.object
+    scene = bpy.context.scene
+    cam = bpy.data.objects.new("C", bpy.data.cameras.new("C"))
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    cam.location = (0, -6, 1.6)
+    cam.rotation_euler = (math.radians(82), 0, 0)
+    scene.render.resolution_x, scene.render.resolution_y = 320, 240
+    scene.render.film_transparent = True
+    for p_ in ("fp_use_random_seed", "fp_enable_compositor_view", "fp_auto_detect_aov"):
+        setattr(scene, p_, False)
+    scene.fp_color_seed = 7
+    scene.fp_auto_style = "PRECISE"
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in (ground, monkey):
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = monkey
+    bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t77_"))
+    try:
+        ink = _render_gray(scene, tmp / "g.png")
+        left = ink[:, :70]                   # モデルの写らない左端
+        dark = float((left > 0.5).mean())
+        assert dark < 0.03, f"地平線の手前が黒い帯になっている: 左端の {dark * 100:.1f}% が線"
+        assert dark > 0.0, "地平線の線まで消えた"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()
