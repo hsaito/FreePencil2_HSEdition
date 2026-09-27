@@ -105,6 +105,18 @@ def aim(cam, f):
             return
 
 
+def _fcurves(action):
+    """アクションの F カーブ。5.x はレイヤー付きアクションで action.fcurves が無い。"""
+    if hasattr(action, "fcurves"):
+        return list(action.fcurves)
+    out = []
+    for layer in getattr(action, "layers", []):
+        for strip in layer.strips:
+            for bag in getattr(strip, "channelbags", []):
+                out += list(bag.fcurves)
+    return out
+
+
 def spin_wheels(car, dist, f0, f1):
     """車輪(子の wheel_*)を進んだ距離ぶん回す。角度 = 距離 / 半径。
 
@@ -124,7 +136,7 @@ def spin_wheels(car, dist, f0, f1):
         w.keyframe_insert("rotation_euler", index=0, frame=f0)
         w.rotation_euler.x = base + per_frame * (f1 - f0)
         w.keyframe_insert("rotation_euler", index=0, frame=f1)
-        for fc in w.animation_data.action.fcurves:
+        for fc in _fcurves(w.animation_data.action):
             for kp in fc.keyframe_points:
                 kp.interpolation = "LINEAR"
 
@@ -214,7 +226,7 @@ def moving_cars(sc):
             spin_wheels_path(o, [abs(y - y0) for y in ys], 1)
             for ob in [o] + [w for w in o.children if w.name.startswith("wheel_")]:
                 if ob.animation_data and ob.animation_data.action:
-                    for fc in ob.animation_data.action.fcurves:
+                    for fc in _fcurves(ob.animation_data.action):
                         for kp in fc.keyframe_points:
                             kp.interpolation = "LINEAR"
             moved += 1
@@ -241,7 +253,7 @@ def moving_cars(sc):
         for f, x in ((1, 22.0), (int(8 * FPS), -26.0)):
             c.location = (x, -2.6, z0)
             c.keyframe_insert("location", frame=f)
-        for fc in c.animation_data.action.fcurves:
+        for fc in _fcurves(c.animation_data.action):
             for kp in fc.keyframe_points:
                 kp.interpolation = "LINEAR"
         spin_wheels(c, 48.0, 1, int(8 * FPS))
@@ -257,6 +269,8 @@ def main():
     sc.render.fps = FPS
     n = moving_cars(sc)
     print(f"@@@ 走る車 {n} 台", flush=True)
+    if "--rebuild" in ARGV:          # 今のアドオンで STEP3 を作り直す(版をまたいだ比較用)
+        bpy.ops.freepencil2.link_button()
     if ONLY:
         if PREVIEW or "--res" in ARGV:   # 経路の確認・撮り直しでも本番と同じ大きさで撮る
             sc.render.resolution_x = RES

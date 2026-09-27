@@ -31,7 +31,10 @@ NODE_GROUP_PREFIX = "FreePencil_v1_1_0_"
 # 代わりにディフューズの直接光を既定 ON にしている。
 FILE_OUTPUT_PASSES = (
     ("fp_fo_line", "line", ("group", "line")),
-    ("fp_fo_color", "color", ("group", "color")),
+    # 色はレンダーそのもの(材質の色)から取る。グループの color 出力は
+    # Image 入力の素通しで、白/モノクロのプレビュー中はそれが白や灰色に
+    # なり、color.png が真っ白で書き出されていた(v2.7 から。v2.8.1 の点検で発見)
+    ("fp_fo_color", "color", ("pass", None, ("Image",))),
     ("fp_fo_light", "light",
      ("pass", "use_pass_diffuse_direct", compat.DIFFUSE_DIRECT_SOCKETS)),
     ("fp_fo_shadow", "shadow", ("pass", "use_pass_shadow", ("Shadow",))),
@@ -773,7 +776,7 @@ def setup_compositor(scene: bpy.types.Scene,
     # 後から有効化するとソケットがまだ生えていない
     if getattr(scene, "fp_file_output", False):
         for _prop, _slot, source in selected_file_output_passes(scene):
-            if source[0] == "pass":
+            if source[0] == "pass" and source[1] is not None:
                 setattr(view_layer, source[1], True)
 
     rl = tree.nodes.new("CompositorNodeRLayers")
@@ -860,6 +863,8 @@ def setup_compositor(scene: bpy.types.Scene,
             if source[0] == "group":
                 src = next((o for o in group_node.outputs
                             if o.name == source[1]), None)
+            elif source[1] is None:          # 常にあるパス(Image)
+                src = compat.render_layer_socket(rl, source[2])
             else:
                 # パスは有効化した直後だと RenderLayers にソケットが
                 # 無いことがあるため、有効化後のノードから引き直す

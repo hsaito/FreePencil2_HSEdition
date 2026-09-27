@@ -3404,6 +3404,28 @@ def t73():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("file output: the color pass comes from the render, not the preview (white preview on)")
+def t74():
+    # 色(color)はグループの Image 入力の素通しから取っていて、STEP0 の既定の
+    # 白プレビュー中は真っ白で書き出されていた(v2.7 から)。レンダーの色から取ること
+    from freepencil2 import fp_core
+    scene = _bg_scene("PRECISE")
+    assert scene.fp_preview_mode == "WHITE"
+    scene.fp_file_output = True
+    scene.fp_fo_color = True
+    bpy.ops.freepencil2.link_button()
+    tree = fp_batch.comp_tree(scene)
+    fo = next(n for n in tree.nodes if n.bl_idname == "CompositorNodeOutputFile")
+    sock = fo.inputs.get("color")
+    assert sock is not None and sock.is_linked, "color の口が無いかつながっていない"
+    src = sock.links[0].from_node
+    # 2倍レンダでは各パスが最終サイズへ縮める Scale を通るので、その手前までたどる
+    while src.bl_idname == "CompositorNodeScale" and src.inputs[0].is_linked:
+        src = src.inputs[0].links[0].from_node
+    assert src.type == "R_LAYERS", f"color がレンダーからでなく {src.bl_idname} から来ている"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()
