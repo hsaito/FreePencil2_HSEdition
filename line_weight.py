@@ -1559,7 +1559,7 @@ def measure_edges(scene, view_layer, percent=100):
         z = z_all[on & inner]
         z = z[np.isfinite(z) & (z < 1e6)]
         if len(z) < 200:
-            # 線が少ない場面(球だけ等)。v2.8.1 で深度の線が平らな面や球の縁で
+            # 線が少ない場面(球だけ等)。v2.8.2 で深度の線が平らな面や球の縁で
             # 太らなくなり、線の画素が 200 を割って奥の距離が測れなかった
             # (t51 が版によって落ちた)。物の内側の深度で測る
             z = z_all[inner]

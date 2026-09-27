@@ -3,7 +3,7 @@
 note の編集画面は Markdown を受け付けないので、ブラウザで描いた文を
 コピーして貼る。触る場所ごとに枠を分け、それぞれにコピーボタンを付ける。
 
-    python dev/note_assets/build_append_html.py --version 2.8.1
+    python dev/note_assets/build_append_html.py --version 2.8.2
 
 出力は note/append_v<版>.html。
 """
@@ -18,7 +18,7 @@ from build_article_html import COPY_JS, CSS  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 ARGV = sys.argv[1:]
-VER = ARGV[ARGV.index("--version") + 1] if "--version" in ARGV else "2.8.1"
+VER = ARGV[ARGV.index("--version") + 1] if "--version" in ARGV else "2.8.2"
 DATE = ARGV[ARGV.index("--date") + 1] if "--date" in ARGV else "2026年09月26日"
 DATE_SLASH = ARGV[ARGV.index("--date-slash") + 1] if "--date-slash" in ARGV else "2026/09/26"
 OUT = ROOT / "note" / f"append_v{VER}.html"

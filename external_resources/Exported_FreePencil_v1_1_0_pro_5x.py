@@ -90,7 +90,7 @@ def create_node_tree_freepencil_v1_1_0_pro():
     n_3.location = (-1373.765380859375, 178.70384216308594)
     n_3.hide = True
     n_3.width = 100.0
-    # v2.8.1: 深度は |Laplace(1/Z')| * Z' * 11(Z' = Z+0.5)。4.x 版の説明を参照
+    # v2.8.2: 深度は |Laplace(1/Z')| * Z' * 11(Z' = Z+0.5)。4.x 版の説明を参照
     n_3.operation = 'MULTIPLY'
     _s = _in(n_3, 2, 'Value')
     if _s is not None:
