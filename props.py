@@ -91,13 +91,13 @@ def far_values(k: float) -> dict:
     """「奥の扱い」k から、奥ほど細く/線を減らす/薄く の3つ。"""
     k = max(0.0, float(k))
     return {"fp_lw_far": min(1.0, k), "fp_lw_far_sens": min(4.0, 1.0 + k),
-            "fp_lw_far_fade": min(1.0, 0.35 * k)}
+            "fp_lw_far_fade": min(1.0, 0.15 * k)}
 
 
 def relief_values(c: float) -> dict:
     """「つぶれ軽減」c から、詰まった線を薄く/細かすぎる縞を薄く の2つ。"""
     c = max(0.0, float(c))
-    return {"fp_lw_dense": min(1.0, 0.6 * c), "fp_lw_stripe_fade": min(1.0, c)}
+    return {"fp_lw_dense": min(1.0, 0.3 * c), "fp_lw_stripe_fade": min(1.0, c)}
 
 
 _QUIET = [False]

@@ -124,10 +124,14 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         # 奥の線減らしは 2.0(3.0 だと町の奥のビルの窓が消えすぎた。
         # dev/note_assets/eval_density_options.py の案 ABC)
         scene.fp_lw_far_sens = 2.0 if background else 1.0
-        scene.fp_lw_far_fade = 0.35 if background else 0.0
+        # 奥を薄くするのは 0.15(2026-10 に変更)。0.35 では詰まった線を薄くする段と重なって
+        # 「色を薄くしただけ」に見えた(並木道で 精密と比べて確認)
+        scene.fp_lw_far_fade = 0.15 if background else 0.0
         # 詰まった線を薄く(つぶれ軽減)。密度の高い町で、手すり・網戸・外階段が
-        # 黒い塊になった。0.6 で塊が灰色の調子になり、輪郭は黒のまま(1.0 は薄すぎ)
-        scene.fp_lw_dense = 0.6 if background else 0.0
+        # 黒い塊になった。0.6 で塊が灰色の調子になり、輪郭は黒のまま(1.0 は薄すぎ)。
+        # 2026-10 に 0.3: 0.6 は並木を灰色の面にし、白プレビューで「色を薄くしただけ」
+        # に見えた。0.3 で葉の陰に黒が残り、町の手すりも黒い塊にはならない(画像で確認)
+        scene.fp_lw_dense = 0.3 if background else 0.0
         # 細かすぎる縞を奥ほど薄く。低い視点から水平の線の多い面を見ると、奥が
         # つぶれて動かすとちらついた(試験場 test_grazing で総当り)
         scene.fp_lw_stripe_fade = 1.0 if background else 0.0
@@ -157,11 +161,12 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
             scene["fp_rig_coarse"] = True
         elif "fp_rig_coarse" in scene:
             del scene["fp_rig_coarse"]
-        # 葉の隙間埋め 6px(200% 基準 = 1080p で 3px)。線の濃さは 0.75。
+        # 葉の隙間埋め 6px(200% 基準 = 1080p で 3px)。線の濃さは 1.0(黒)。
+        # v2.8.2 までは 0.75(濃い灰色)で、精密と並べると薄く見えた
         # 背景は線を細く(強さ 0.5 = 最大 6px、1080p で 3px)。太いのは
         # 近くに寄ったときだけでよい
         scene.fp_gap_fill = 6 if background else 0
-        scene.fp_lw_ink = 0.75 if background else 1.0
+        scene.fp_lw_ink = 1.0
         # キャラは 0.6(ほんのり強弱)。1.0 は輪郭が太すぎ、細かいメカを小さく
         # 写すと黒く詰まった(リグ付きロボット)。太くしたいときはスライダーで
         # 上げればその場で効く
