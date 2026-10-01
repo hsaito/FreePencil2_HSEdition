@@ -13,12 +13,11 @@ from mathutils import Matrix
 from town_kit import MB, facade_matrix, roof_railing, cooling_unit, billboard, antenna
 
 
-def tower(cx, cy, w, d, floors, face, rng, idx):
+def tower(cx, cy, w, d, floors, face, rng, idx, pitch=1.2, fh=3.6):
     """裏手の高層: カーテンウォールの格子(方立 1.2m・階ごとの無目・スパンドレル)、
     角の柱、屋上の機器・広告塔・アンテナ。表通りの建物の間から見える空を埋める。"""
     mat, along, depth = facade_matrix(cx, cy, w, d, face)
     mb = MB(f"tower{idx}")
-    fh = 3.6
     h = floors * fh
     x0, x1 = -along / 2, along / 2
     mb.box(0, depth / 2, h / 2, along, depth, h)
@@ -28,7 +27,7 @@ def tower(cx, cy, w, d, floors, face, rng, idx):
         mb.push(np.array(Matrix.Translation((0, depth / 2, 0))
                          @ Matrix.Rotation(side * math.pi / 2, 4, "Z")
                          @ Matrix.Translation((0, -D / 2, 0))))
-        k = max(2, int(W / 1.2))
+        k = max(2, int(W / pitch))
         for i in range(k + 1):
             mb.box(-W / 2 + i * W / k, -0.06, h / 2, 0.08, 0.12, h)            # 方立
         for fl in range(1, floors):
