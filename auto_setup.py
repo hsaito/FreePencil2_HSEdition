@@ -142,9 +142,11 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
                              "fp_lw_relief": 1.0 if background else 0.0})
         # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
         scene.fp_foliage_clumps = 4 if background else 0
-        # 細い線(精密の分割)を薄く重ねる。背景は 0.6。線を太くせず本数で
-        # 戻す(0.35 ではアパートの窓枠が精密より明らかに少なかった)
-        scene.fp_fine_lines = 0.6 if background else 0.0
+        # 細い線(精密の分割)を重ねる。線を太くせず本数で戻す(0.35 ではアパートの
+        # 窓枠が精密より明らかに少なかった)。2026-10 に 0.6 -> 1.0: 0.6 は細い線が
+        # 灰色になり、精密と並べると「色を薄くしただけ」に見えた。1.0 で並木の陰と
+        # 枝が黒く入り、町の手すりも塊にならない(並木道と町で確認)
+        scene.fp_fine_lines = 1.0 if background else 0.0
         # 細い線を使うときは、STEP1 を 2 回塗る。1 回目はここで精密の値に
         # しておき(この後のモーダルが塗る)、_finish で fine_color へ写して
         # から手描きの値で塗り直す

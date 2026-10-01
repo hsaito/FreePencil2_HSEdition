@@ -2141,7 +2141,7 @@ def t49():
     assert scene.fp_foliage_clumps == 4, "背景なのに葉の房が入らない"
     assert scene.fp_gap_fill == 6 and abs(scene.fp_lw_ink - 1.0) < 1e-6, "背景の隙間埋め/線の濃さが入らない"
     assert abs(scene.fp_lw_strength - 0.5) < 1e-6, "背景なのに線が細くならない"
-    assert abs(scene.fp_fine_lines - 0.6) < 1e-6, "背景なのに細い線が入らない"
+    assert abs(scene.fp_fine_lines - 1.0) < 1e-6, "背景なのに細い線が入らない"
     assert scene.fp_ch_depth == 0.0, "背景なのに深度チャンネルが生きている"
     assert scene.fp_lw_far_end > scene.fp_lw_far_start > 0.0, "奥の距離が測られていない"
     assert any(n.get("fp_tap") == "far" for n in
