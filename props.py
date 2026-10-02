@@ -95,9 +95,13 @@ def far_values(k: float) -> dict:
 
 
 def relief_values(c: float) -> dict:
-    """「つぶれ軽減」c から、詰まった線を薄く/細かすぎる縞を薄く の2つ。"""
+    """「つぶれ軽減」c から、詰まった線を薄く。
+
+    v2.9 で「細かすぎる縞を薄く」はここから外した(既定 0・詳細の別のつまみ)。
+    動くと遠景が灰色のまだらでちらついたため
+    """
     c = max(0.0, float(c))
-    return {"fp_lw_dense": min(1.0, 0.3 * c), "fp_lw_stripe_fade": min(1.0, c)}
+    return {"fp_lw_dense": min(1.0, 0.3 * c)}
 
 
 _QUIET = [False]

@@ -43,6 +43,20 @@ if FAR is not None:
     sc.fp_lw_far_amount = float(FAR)
 if RELIEF is not None:
     sc.fp_lw_relief = float(RELIEF)
+for kv in (arg("--set") or "").split(","):    # 任意のプロパティ: --set fp_lw_dense=0.3,fp_lw_far_fade=0
+    if kv:
+        k, v = kv.split("=")
+        setattr(sc, k, float(v))
+if arg("--preview"):
+    sc.fp_preview_mode = arg("--preview")
+if arg("--patch"):                            # 試作: line_weight の定数を差し替えて STEP3 を組む(本体は変えない)
+    import importlib
+    _lw = importlib.import_module(next(m for m in sys.modules if m.endswith(".line_weight")))
+    for kv in arg("--patch").split(","):
+        k, v = kv.split("=")
+        setattr(_lw, k, type(getattr(_lw, k))(float(v)))
+        print("@@@ patch", k, getattr(_lw, k), flush=True)
+bpy.ops.freepencil2.link_button()             # STEP3 を作り直して確実に反映
 cam = sc.camera
 OUT.mkdir(parents=True, exist_ok=True)
 for i in range(N):

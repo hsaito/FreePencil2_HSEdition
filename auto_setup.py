@@ -134,7 +134,12 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         scene.fp_lw_dense = 0.3 if background else 0.0
         # 細かすぎる縞を奥ほど薄く。低い視点から水平の線の多い面を見ると、奥が
         # つぶれて動かすとちらついた(試験場 test_grazing で総当り)
-        scene.fp_lw_stripe_fade = 1.0 if background else 0.0
+        # v2.9 で既定を切った(0)。カメラが動くと、遠くの窓の格子が画素とのずれで
+        # コマごとに見え方を変え、薄める範囲と灰色の濃さが揺れて灰色のまだらが
+        # ちらついた。縁石のような近い 2 本の線も細い二重線になった(大通りの飛行で
+        # 確認、dev/note_assets/flicker_compare.py)。低い視点の横縞のモアレには効くので、
+        # STEP3 の詳細のつまみで入れられる
+        scene.fp_lw_stripe_fade = 0.0
         # パネルのつまみ(上の5つをまとめた2本)。1.0 が上の値と同じ。更新フック
         # を動かすと STEP0 の途中で STEP3 を作り直すので、フックを止めて書く
         from .props import _write_quiet

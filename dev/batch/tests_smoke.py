@@ -2992,7 +2992,7 @@ def t63():
     tmp = Path(tempfile.mkdtemp(prefix="fp_t63_"))
     try:
         scene = build()
-        assert scene.fp_lw_stripe_fade == 1.0, "手描き背景の既定で縞を薄くが入らない"
+        assert scene.fp_lw_stripe_fade == 0.0, "v2.9: 手描き背景の既定では縞を薄くは切る(動くとちらつく)"
         f0, n0 = ink(scene, tmp / "s0.png", 0.0)
         f1, n1 = ink(scene, tmp / "s1.png", 1.0)
         assert f0 > 0 and n0 > 0, (f0, n0)
@@ -3393,7 +3393,7 @@ def t73():
     scene = _bg_scene()
     assert abs(scene.fp_lw_far_amount - 1.0) < 1e-6 and abs(scene.fp_lw_relief - 1.0) < 1e-6
     assert (scene.fp_lw_far, scene.fp_lw_far_sens, round(scene.fp_lw_far_fade, 4)) == (1.0, 2.0, 0.15)
-    assert (round(scene.fp_lw_dense, 4), scene.fp_lw_stripe_fade) == (0.3, 1.0)
+    assert (round(scene.fp_lw_dense, 4), scene.fp_lw_stripe_fade) == (0.3, 0.0)
     scene.fp_lw_far_amount = 0.0
     assert (scene.fp_lw_far, scene.fp_lw_far_sens, scene.fp_lw_far_fade) == (0.0, 1.0, 0.0)
     tree = fp_batch.comp_tree(scene)
