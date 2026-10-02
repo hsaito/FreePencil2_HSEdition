@@ -168,6 +168,60 @@ def paint_as(obj):
     return kind
 
 
+FAR_LOD_FRAME_SAMPLES = 33   # カメラが動くとき、動きの範囲から取る位置の数
+FAR_LOD_REF_WIDTH = 1920     # 遠い区画のしきい値(px^2)はこの横幅の絵で測る
+
+
+def far_lod_cameras(scene):
+    """遠い区画をまとめる(mesh_islands.merge_far_islands)ためのカメラ。
+
+    戻り値 (位置のリスト, 焦点距離 px) か None(カメラが無い・平行投影)。
+    焦点距離は「横 1920 px の絵」に揃えて測る(FAR_LOD_REF_WIDTH)。レンダの
+    大きさで変えると、小さく試し撮りしたときと本番で塗りが変わり、240px の
+    試験では 1m の箱の側面までまとまって角の線が消えた(t58)。
+    カメラ(か親)にアニメーションか拘束があれば、シーンのフレーム範囲から
+    位置を取る。近づく予定の物は、一番近づく位置で粗さを決める
+    (STEP0 の位置だけで決めると、近づいたビルの窓が描かれないままになった)。
+    """
+    cam = scene.camera
+    if cam is None or cam.type != 'CAMERA' or cam.data.type != 'PERSP':
+        return None
+    rx, ry = scene.render.resolution_x, scene.render.resolution_y
+    fit = cam.data.sensor_fit
+    if fit == 'VERTICAL':
+        size, sensor = ry, cam.data.sensor_height
+    elif fit == 'HORIZONTAL':
+        size, sensor = rx, cam.data.sensor_width
+    else:
+        size, sensor = max(rx, ry), cam.data.sensor_width
+    # 横 1920 に揃える(縦横比は保つ)
+    size = size * FAR_LOD_REF_WIDTH / max(rx, 1)
+    fpx = size * cam.data.lens / max(sensor, 1e-6)
+
+    def moves(o):
+        while o is not None:
+            ad = o.animation_data
+            if (ad is not None and (ad.action is not None or len(ad.drivers))) or len(o.constraints):
+                return True
+            o = o.parent
+        return False
+
+    if not moves(cam):
+        return [tuple(cam.matrix_world.translation)], fpx
+    f0, f1 = scene.frame_start, scene.frame_end
+    keep = scene.frame_current
+    n = max(1, min(FAR_LOD_FRAME_SAMPLES, f1 - f0 + 1))
+    pos = []
+    try:
+        for k in range(n):
+            f = int(round(f0 + (f1 - f0) * k / max(1, n - 1)))
+            scene.frame_set(f)
+            pos.append(tuple(cam.matrix_world.translation))
+    finally:
+        scene.frame_set(keep)
+    return pos, fpx
+
+
 def color_distance_rgb(rgb1, rgb2):
     """Return the Euclidean distance between two RGB tuples."""
     return math.sqrt(sum([(c1 - c2)**2 for c1, c2 in zip(rgb1, rgb2)]))
@@ -457,6 +511,10 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                         break
                 many_loose_parts = total_parts >= 8
 
+        # 遠い区画をまとめる(手描き背景、既定 0 = 通らない)。カメラは1回だけ見る
+        far_lod_px = float(getattr(scene, "fp_far_lod_px", 0.0))
+        far_cams = far_lod_cameras(scene) if far_lod_px > 0.0 else None
+
         # オブジェクト内フェーズの刻みは編集モード中に制御を返すため、その
         # たびにビューポートが編集モード状態で再描画され、パーツ数が多いと
         # 画面が激しく点滅する。パーツが多ければオブジェクト単位の刻み
@@ -668,6 +726,32 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                         islands = topo.islands
                         print(f"[FreePencil] '{obj.name}': 葉を房に "
                               f"{n_before}島 -> {len(islands)}島(房{n_clumps})")
+
+                # --- 2.8 遠い区画をまとめる(手描き背景、v2.9) ---
+                # 房の後に置く: 手前の木の房は崩さず、遠い木の房だけをまとめる。
+                # 同じメッシュを使う物(並木など)は、カメラに近い数本で測り、
+                # 一番大きく写る値を使う(手前の物を粗くしない)
+                if far_cams is not None and len(islands) > 1 and not rig_coarse:
+                    users = [o for o in context.scene.objects
+                             if o.type == 'MESH' and o.data == obj.data
+                             and not o.hide_render] or [obj]
+                    cams_np = np.asarray(far_cams[0], dtype=np.float64)
+
+                    def _near(o):
+                        c = np.asarray(o.matrix_world.translation, dtype=np.float64)
+                        return float(np.min(np.linalg.norm(cams_np - c, axis=1)))
+                    users.sort(key=_near)
+                    mats = [np.asarray(o.matrix_world, dtype=np.float64)
+                            for o in users[:mesh_islands.FAR_LOD_INSTANCES]]
+                    face_px = mesh_islands.face_screen_area(
+                        topo, obj.data, mats, far_cams[0], far_cams[1])
+                    n_before = len(islands)
+                    n_far = mesh_islands.merge_far_islands(
+                        topo, face_px, far_lod_px, matrix=mats[0])
+                    if n_far:
+                        islands = topo.islands
+                        print(f"[FreePencil] '{obj.name}': 遠い区画をまとめる "
+                              f"{n_before}島 -> {len(islands)}島")
 
                 # --- 3. 島の隣接グラフ彩色 + パレット配色 ---
                 # 乱数リトライで隣接色距離を満たそうとする方式をやめ、

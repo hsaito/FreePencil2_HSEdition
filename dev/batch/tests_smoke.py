@@ -3558,6 +3558,66 @@ def t78():
         bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("background: far islands merge (far facade keeps its outline, near facade keeps its windows)")
+def t79():
+    # 遠くのビルの窓が、どの仕上がりでも黒い縞の塊になった。手描き背景では、
+    # 画面上で小さい区画(窓)を近くの壁へまとめる(fp_far_lod_px、v2.9)。
+    # 同じ形の壁を手前と奥に置き、奥だけ色数が減ること。精密では減らないこと
+    import math
+
+    def facade(name, y):
+        bpy.ops.mesh.primitive_plane_add(size=10, location=(0, y, 5), rotation=(math.radians(90), 0, 0))
+        wall = bpy.context.object
+        parts = [wall]
+        for i in range(6):
+            for j in range(6):
+                bpy.ops.mesh.primitive_cube_add(size=1, location=(-3.75 + i * 1.5, y - 0.05, 1.25 + j * 1.5))
+                w = bpy.context.object
+                w.scale = (0.6, 0.1, 0.6)
+                parts.append(w)
+        bpy.ops.object.select_all(action="DESELECT")
+        for o in parts:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = wall
+        bpy.ops.object.join()
+        o = bpy.context.object
+        o.name = name
+        return o
+
+    def run(style):
+        bpy.ops.wm.read_homefile(use_empty=True)
+        near = facade("near", 20.0)
+        far = facade("far", 600.0)
+        scene = bpy.context.scene
+        cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+        cam.data.lens = 35
+        cam.location = (0, 0, 5)
+        cam.rotation_euler = (math.radians(90), 0, 0)
+        scene.collection.objects.link(cam)
+        scene.camera = cam
+        scene.render.resolution_x, scene.render.resolution_y = 960, 540
+        for p_ in ("fp_use_random_seed", "fp_enable_compositor_view", "fp_auto_detect_aov"):
+            setattr(scene, p_, False)
+        scene.fp_color_seed = 7
+        scene.fp_auto_style = style
+        bpy.ops.object.select_all(action="DESELECT")
+        for o in (near, far):
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = near
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        return (len(set(get_mecha_colors(near))), len(set(get_mecha_colors(far))),
+                scene.fp_far_lod_px)
+
+    n_bg, f_bg, px = run("BACKGROUND")
+    assert px == 500.0, f"手描き背景の既定で遠い区画をまとめるが入らない: {px}"
+    # 島 37 個(壁 + 窓 36)。色はパレットで使い回すので、手前は 10 色前後になる
+    assert n_bg >= 5, f"手前の窓までまとまった(色数 {n_bg})"
+    assert f_bg <= 2, f"奥の窓がまとまらない(色数 {f_bg})"
+    n_pr, f_pr, px = run("PRECISE")
+    assert px == 0.0 and f_pr >= 5, f"精密で奥の窓がまとまった(色数 {f_pr}, px {px})"
+    bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

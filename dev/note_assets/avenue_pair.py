@@ -20,6 +20,9 @@ sys.path.insert(0, str(HERE.parent / "batch"))
 import bpy, fp_batch          # noqa: E402
 
 fp_batch.install_addon()
+if "--no-farlod" in ARGV:          # 比較用: 遠い区画をまとめるを切る
+    _vc = sys.modules[next(m for m in sys.modules if m.endswith(".vertex_color"))]
+    _vc.far_lod_cameras = lambda scene: None
 OUT.mkdir(parents=True, exist_ok=True)
 STYLES = arg("--styles", "PRECISE,BACKGROUND").split(",")
 for style, name in (("PRECISE", "precise"), ("BACKGROUND", "background")):

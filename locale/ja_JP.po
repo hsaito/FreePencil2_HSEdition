@@ -682,6 +682,12 @@ msgstr "縁をやわらかく(px)"
 msgid "Foliage clumps"
 msgstr "葉を房に(個数)"
 
+msgid "Merge far islands (px)"
+msgstr "遠い区画をまとめる(px)"
+
+msgid "Islands that look smaller than this on screen (pixels of a 1920-wide picture, seen from the camera, nearest point of its animation) are painted together with the nearest bigger island, so far buildings keep their outline and big bands instead of a black block of windows. 0 = off. Needs STEP1 again"
+msgstr "画面上でこの大きさ(横 1920 の絵の画素、カメラから見て。カメラが動くなら一番近づく位置)より小さく写る区画を、近くの大きい区画と同じ色で塗ります。遠くのビルが窓の黒い塊にならず、輪郭と大きな帯で描かれます。0 = しない。STEP1 をやり直すと反映されます"
+
 msgid "Fill leaf gaps"
 msgstr "葉の隙間を埋める(px)"
 

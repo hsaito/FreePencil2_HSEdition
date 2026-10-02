@@ -137,6 +137,8 @@ class FP_PT_Step1(_FPSub, bpy.types.Panel):
         row.prop(scene, "fp_sharp_edges", slider=True, text=t("Edge Angle"))
         col.prop(scene, "fp_seam_boundaries", text=t("Seam/material boundaries"))
         col.prop(scene, "fp_min_island_area_pct", text=t("Min island area %"))
+        # 遠い区画をまとめる(手描き背景の STEP0 で 500)。STEP1 で効く
+        col.prop(scene, "fp_far_lod_px", text=t("Merge far islands (px)"))
         # 稜線の起伏・葉の房は STEP0 が仕上がりごとに決める(v2.8.1 でパネルから外した)
 
         # --- ボーン(キャラ用) ---

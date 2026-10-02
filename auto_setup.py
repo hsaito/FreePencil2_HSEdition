@@ -147,6 +147,9 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
                              "fp_lw_relief": 1.0 if background else 0.0})
         # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
         scene.fp_foliage_clumps = 4 if background else 0
+        # 遠い区画をまとめる 500px(v2.9)。150 ではほとんど効かず、500 で奥の高層が
+        # 輪郭と帯になった(dev/note_assets/far_lod_proto.py)。手前は変わらない
+        scene.fp_far_lod_px = 500.0 if background else 0.0
         # 細い線(精密の分割)を重ねる。線を太くせず本数で戻す(0.35 ではアパートの
         # 窓枠が精密より明らかに少なかった)。2026-10 に 0.6 -> 1.0: 0.6 は細い線が
         # 灰色になり、精密と並べると「色を薄くしただけ」に見えた。1.0 で並木の陰と

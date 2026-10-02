@@ -548,6 +548,17 @@ def register_props():
             ),
             default=0, min=0, max=16
         ),
+        "fp_far_lod_px": FloatProperty(
+            name="Merge far islands (px)",
+            description=(
+                "Islands that look smaller than this on screen (pixels of a "
+                "1920-wide picture, seen from the camera, nearest point of its animation) are "
+                "painted together with the nearest bigger island, so far "
+                "buildings keep their outline and big bands instead of a black "
+                "block of windows. 0 = off. Needs STEP1 again"
+            ),
+            default=0.0, min=0.0, max=5000.0, step=1000, precision=0
+        ),
         "fp_gap_fill": IntProperty(
             name="Fill leaf gaps",
             description=(
@@ -935,7 +946,7 @@ def unregister_props():
         "fp_line_weight", "fp_lw_strength", "fp_lw_density",
         "fp_lw_far", "fp_lw_far_sens", "fp_lw_far_fade", "fp_lw_far_start", "fp_lw_far_end",
         "fp_lw_dense", "fp_lw_stripe_fade", "fp_lw_far_amount", "fp_lw_relief",
-        "fp_foliage_clumps", "fp_gap_fill", "fp_lw_ink", "fp_lw_soften",
+        "fp_foliage_clumps", "fp_far_lod_px", "fp_gap_fill", "fp_lw_ink", "fp_lw_soften",
         "fp_fine_lines", "fp_lw_e1", "fp_lw_e2", "fp_lw_e3", "fp_lw_e4",
         "fp_far_relief", "fp_far_relief_radius", "fp_far_relief_threshold",
         "fp_ch_mecha", "fp_ch_depth", "fp_ch_bone", "fp_ch_gen", "fp_ch_mat",

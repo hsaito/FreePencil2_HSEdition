@@ -892,3 +892,100 @@ def clump_small_islands(topo: MeshTopology, k: int, seed: int,
             merged.append(np.concatenate(members))
     topo.set_islands(merged)
     return kk
+
+
+# 遠い区画をまとめる(手描き背景、v2.9)。
+#
+# 遠くのビルの窓や帯は、どの仕上がりでも線が詰まって黒い縞の塊になった
+# (精密と同じ。手描き背景の「奥ほど線を減らす」はしきい値を上げる仕組みで、
+# 窓の色の段差はそれより強いので減らなかった。2 -> 4 にしても変わらず)。
+# 人が遠景を描くときは窓を1つずつ描かず、輪郭と大きな帯だけを描く。
+# 区画ごとに STEP0 のカメラから見た画面上の面積(出力の px^2)を出し、
+# 小さすぎる区画を、残す区画の一番近い面へまとめる(色が同じになり線が消える)。
+#
+# 実測(dev/note_assets/far_lod_proto.py、大通り 1920x1080):
+#   150px はほとんど効かない。500px で一番奥の高層が輪郭と数本の帯になり、
+#   手前のビルは変わらない(島 44916 -> 5808)。
+# 粗さは STEP0 のカメラで決まるので、カメラが動くなら動きの範囲で一番近い
+# 位置を使う(呼ぶ側 vertex_color.far_lod_cameras)。
+FAR_LOD_INSTANCES = 3     # 同じメッシュを使う物は、カメラに近い順にこの数だけ見る
+
+
+def face_screen_area(topo: MeshTopology, mesh, matrices, cam_positions, fpx: float):
+    """面ごとの、画面上の面積の最大値(出力の px^2)。
+
+    面積(ワールド) x (焦点距離px / 距離)^2 x |cos(視線と法線)| を、
+    渡された物(行列)とカメラ位置の全部で取り、一番大きく写る値を返す。
+    """
+    nf = topo.n_faces
+    out = np.zeros(nf, dtype=np.float64)
+    if nf == 0 or not matrices or len(cam_positions) == 0:
+        return out
+    nrm0 = np.empty(nf * 3, dtype=np.float32)
+    mesh.polygons.foreach_get("normal", nrm0)
+    nrm0 = nrm0.reshape(nf, 3).astype(np.float64)
+    c0 = topo.center.astype(np.float64)
+    a0 = topo.area.astype(np.float64)
+    cams = np.asarray(cam_positions, dtype=np.float64).reshape(-1, 3)
+    for M in matrices:
+        M = np.asarray(M, dtype=np.float64)
+        L = M[:3, :3]
+        try:
+            nrm = nrm0 @ np.linalg.inv(L)          # 法線は逆転置で運ぶ
+        except np.linalg.LinAlgError:
+            continue
+        nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-12)
+        cw = c0 @ L.T + M[:3, 3]
+        area = a0 * abs(np.linalg.det(L)) ** (2.0 / 3.0)
+        for cp in cams:
+            v = cw - cp
+            d = np.maximum(np.linalg.norm(v, axis=1), 1e-3)
+            cosv = np.abs((v / d[:, None] * nrm).sum(1))
+            np.maximum(out, area * (fpx / d) ** 2 * np.maximum(cosv, 0.02), out=out)
+    return out
+
+
+def merge_far_islands(topo: MeshTopology, face_px, min_px: float, matrix=None) -> int:
+    """画面上の面積が min_px 未満の区画を、残す区画の一番近い面へまとめる。
+
+    残す区画が1つも無い(物全体が遠い)ときは、一番広い区画へ全部まとめる
+    (物の輪郭だけが残る)。戻り値はまとめた区画の数。
+    """
+    islands = topo.islands
+    n = len(islands)
+    if n <= 1 or min_px <= 0.0:
+        return 0
+    face_px = np.asarray(face_px, dtype=np.float64)
+    px = np.array([face_px[f].sum() for f in islands])
+    keep = px >= min_px
+    if keep.all():
+        return 0
+    if not keep.any():
+        area = np.array([float(topo.area[f].sum()) for f in islands])
+        big = int(np.argmax(area))
+        topo.set_islands([np.concatenate([islands[big]] + [islands[i] for i in range(n) if i != big])])
+        return n - 1
+    from mathutils.kdtree import KDTree
+    c = topo.center.astype(np.float64)
+    if matrix is not None:
+        M = np.asarray(matrix, dtype=np.float64)
+        c = c @ M[:3, :3].T + M[:3, 3]
+    keep_idx = np.flatnonzero(keep)
+    kf = np.concatenate([islands[i] for i in keep_idx])
+    owner = np.concatenate([np.full(len(islands[i]), i, dtype=np.int64) for i in keep_idx])
+    tree = KDTree(len(kf))
+    for k, f in enumerate(kf.tolist()):
+        tree.insert(c[f].tolist(), k)
+    tree.balance()
+    target = {}
+    for i in np.flatnonzero(~keep):
+        ctr = c[islands[i]].mean(0)
+        _, k, _ = tree.find(ctr.tolist())
+        target.setdefault(int(owner[k]), []).append(i)
+    merged = []
+    for i in range(n):
+        if keep[i]:
+            # 代表面(先頭)を保つ: 残す区画の面を先頭に
+            merged.append(np.concatenate([islands[i]] + [islands[j] for j in target.get(i, [])]))
+    topo.set_islands(merged)
+    return int((~keep).sum())

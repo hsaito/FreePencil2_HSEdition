@@ -39,6 +39,9 @@ import bpy, fp_batch               # noqa: E402
 import shoot_town_v2 as st         # noqa: E402
 
 fp_batch.install_addon()
+if "--no-farlod" in ARGV:          # 比較用: 遠い区画をまとめるを切る
+    _vc = sys.modules[next(m for m in sys.modules if m.endswith(".vertex_color"))]
+    _vc.far_lod_cameras = lambda scene: None
 OUT.mkdir(parents=True, exist_ok=True)
 for style in STYLES:
     src = OUT / f"{style}.blend"
@@ -53,6 +56,14 @@ for style in STYLES:
         for o in meshes:
             o.select_set(True)
         bpy.context.view_layer.objects.active = meshes[0]
+        if "--bake-cam" in ARGV:            # カメラの動きをキーにする(ユーザーがキーで動かす場合と同じ)
+            st.FRAMES = 720
+            sc.frame_start, sc.frame_end = 1, 720
+            for f in range(1, 721, 8):
+                st.aim(sc.camera, f - 1)
+                sc.camera.keyframe_insert("location", frame=f)
+                sc.camera.keyframe_insert("rotation_euler", frame=f)
+            sc.frame_set(1)
         sc.fp_auto_style = style
         bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")          # STEP0 だけ
         print("@@@", style, "STEP0", {k: round(float(getattr(sc, k)), 3) for k in
