@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 ### Added
+- **FreePencil を外す**(STEP0 の「FreePencil を外す」、`freepencil.remove`)。note のコメントで
+  「適用したあと戻す方法は？ アングルを変えて光源込みでレンダリングし直したい」と聞かれた。
+  STEP0〜3 が足した色属性・材質の AOV ノード・FreePencil_Material・ビューレイヤーの AOV・
+  コンポジタのノード・ノードグループを消し、変えた設定(背景の透過、色の変換、200%、
+  パス、EEVEE の AO、透過材質の BLEND、pass_index、利用者のコンポジタの入出力とつなぎ)を戻す。
+  元の値は、最初の STEP の入口で scene["fp_undo"] に控える(.blend に残る)。控えの無い
+  ファイル(v2.8 以前)は足したものを消し、戻せない項目を知らせる。確認を出し、Ctrl+Z で
+  取り消せる。4.5 / 5.2 で、STEP0 の前と外した後(保存して開き直してから)の絵が画素まで
+  一致(テスト 80 本目、dev/note_assets/remove_check.py)
 - **見え方の監査**(開発用、`dev/batch/visual_audit_run.py`、`install_all.py --test --audit`)。
   人が見て初めて見つかった不具合の場面(Blender 既定の不透明な背景 x 3 仕上がり、地面あり、
   背景透過、プレビューの切り替え一巡、手前と奥の窓の壁)を 4.5 / 5.2 で撮り、基準の絵

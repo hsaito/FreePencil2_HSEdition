@@ -307,6 +307,24 @@ msgctxt "*"
 msgid "Auto setup (STEP1-3)"
 msgstr "全自動セットアップ (STEP1〜3)"
 
+msgid "Remove FreePencil"
+msgstr "FreePencil を外す"
+
+msgid "Remove the vertex colors, AOVs and compositor nodes FreePencil added, and restore the render settings and materials it changed (to before the first STEP). The shape of the meshes was never changed. Ctrl+Z undoes this"
+msgstr "FreePencil が足した頂点カラー・AOV・コンポジタのノードを消し、変えたレンダー設定と材質を最初の STEP の前に戻します。メッシュの形は変えていません。Ctrl+Z で取り消せます"
+
+msgid "Remove everything FreePencil added to this scene and restore the settings it changed"
+msgstr "このシーンに FreePencil が足したものを消し、変えた設定を戻します"
+
+msgid "FreePencil removed. The scene is back to before the first STEP"
+msgstr "FreePencil を外しました。最初の STEP の前の状態に戻っています"
+
+msgid "Removed. Settings from before FreePencil were not recorded in this file, so these were left as they are: "
+msgstr "外しました。このファイルには FreePencil を使う前の設定が控えられていないため、次の項目は今のままです: "
+
+msgid "view transform, transparent film, EEVEE AO, transparent material blend mode"
+msgstr "色の変換(Standard)、背景の透過、EEVEE の AO、透過材質の描画方法(HASHED)"
+
 msgctxt "*"
 msgid "Recommended settings for this scene"
 msgstr "シーンに合わせたおすすめ設定で実行"

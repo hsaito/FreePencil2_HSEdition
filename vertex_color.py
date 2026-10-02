@@ -259,6 +259,8 @@ def make_vertex_color_gen(context, quiet=False):
 
     STEP0(auto_setup)が STEP1 と同じ進捗バーで駆動するための共有入口。
     """
+    from . import undo_setup          # 「FreePencil を外す」ための元の値を控える
+    undo_setup.snapshot(context)
     state = VCRunState(quiet=quiet)
     return LINK_MAKE_OT_FP._run(state, context), state
 

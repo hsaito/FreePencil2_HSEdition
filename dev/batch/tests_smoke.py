@@ -3618,6 +3618,107 @@ def t79():
     bpy.ops.wm.read_homefile(use_empty=True)
 
 
+@test("remove FreePencil: everything added is gone and the render matches the one before STEP0")
+def t80():
+    # 利用者から「適用したあと戻す方法は？ アングルを変えて光源込みでレンダリングし直したい」
+    # (note のコメント)。v2.9 で「FreePencil を外す」を足した。利用者の設定(透過の材質、
+    # 材質の無い物、自分のコンポジタ、AgX、100%、背景は不透明)が全部元に戻り、
+    # STEP0 の前と同じ絵でレンダリングされること
+    import math
+    import shutil
+    import tempfile
+    import numpy as np
+    from freepencil2 import compat
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    scene = bpy.context.scene
+    bpy.ops.mesh.primitive_monkey_add(size=1.6, location=(-1.0, 0, 0.9))
+    monkey = bpy.context.object
+    mat = bpy.data.materials.new("Glassy")
+    mat.use_nodes = True
+    if hasattr(mat, "blend_method"):
+        mat.blend_method = "BLEND"
+    monkey.data.materials.append(mat)
+    bpy.ops.mesh.primitive_cube_add(size=1.2, location=(1.0, 0.3, 0.6))
+    cube = bpy.context.object
+    cam = bpy.data.objects.new("Cam", bpy.data.cameras.new("Cam"))
+    cam.location = (0, -6, 1.6)
+    cam.rotation_euler = (math.radians(82), 0, 0)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    lt = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+    lt.rotation_euler = (math.radians(45), 0, math.radians(30))
+    scene.collection.objects.link(lt)
+    scene.render.resolution_x, scene.render.resolution_y = 320, 240
+    scene.eevee.taa_render_samples = 4
+    # 利用者のコンポジタ: RenderLayers -> Invert -> 出力(5.x は利用者が付けた名前のグループ)
+    if compat.IS_5_PLUS:
+        ng = bpy.data.node_groups.new("My Compositor", "CompositorNodeTree")
+        ng.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+        scene.compositing_node_group = ng
+    tree = compat.get_compositor_tree(scene, create=True)
+    for n in list(tree.nodes):
+        tree.nodes.remove(n)
+    rl = tree.nodes.new("CompositorNodeRLayers")
+    rl.name = "My RL"
+    inv = tree.nodes.new("CompositorNodeInvert")
+    inv.name = "My Invert"
+    out = compat.new_output_node(tree)
+    out.name = "My Out"
+    tree.links.new(rl.outputs["Image"], inv.inputs["Color"])
+    tree.links.new(inv.outputs[0], out.inputs[0])
+    before = {"film": scene.render.film_transparent, "vt": scene.view_settings.view_transform,
+              "pct": scene.render.resolution_percentage, "z": bpy.context.view_layer.use_pass_z,
+              "blend": getattr(mat, "blend_method", None), "aovs": len(bpy.context.view_layer.aovs)}
+    tmp = Path(tempfile.mkdtemp(prefix="fp_t80_"))
+    try:
+        def render(name):
+            scene.render.filepath = str(tmp / name)
+            bpy.ops.render.render(write_still=True)
+            img = bpy.data.images.load(str(tmp / name))
+            buf = np.empty(img.size[0] * img.size[1] * 4, dtype=np.float32)
+            img.pixels.foreach_get(buf)
+            bpy.data.images.remove(img)
+            return buf.reshape(-1, 4)[:, :3]
+        a = render("before.png")
+        for p_ in ("fp_use_random_seed", "fp_enable_compositor_view", "fp_auto_detect_aov"):
+            setattr(scene, p_, False)
+        scene.fp_auto_style = "WEIGHTED"
+        bpy.ops.object.select_all(action="DESELECT")
+        monkey.select_set(True)
+        cube.select_set(True)
+        bpy.context.view_layer.objects.active = monkey
+        bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")
+        assert monkey.data.color_attributes.get("mecha_color") is not None, "STEP0 が塗っていない"
+        assert scene.render.resolution_percentage == 200 or not scene.fp_supersample
+        res = bpy.ops.freepencil.remove()
+        assert res == {"FINISHED"}, res
+        for o in (monkey, cube):
+            left = [a_.name for a_ in o.data.color_attributes]
+            assert not left, f"{o.name} に色属性が残った: {left}"
+        assert len(cube.material_slots) == 0, "材質の無かった物に FreePencil_Material が残った"
+        assert bpy.data.materials.get("FreePencil_Material") is None
+        assert getattr(mat, "blend_method", None) == before["blend"], "透過の材質が HASHED のまま"
+        assert not any(n.type == "GROUP" for n in mat.node_tree.nodes), "材質に AOV グループが残った"
+        assert scene.render.film_transparent == before["film"]
+        assert scene.view_settings.view_transform == before["vt"]
+        assert scene.render.resolution_percentage == before["pct"]
+        assert bpy.context.view_layer.use_pass_z == before["z"]
+        assert len(bpy.context.view_layer.aovs) == before["aovs"], "AOV が残った"
+        assert not any(g.name.startswith("FreePencil") for g in bpy.data.node_groups),             [g.name for g in bpy.data.node_groups]
+        tree = compat.get_compositor_tree(scene)
+        names = sorted(n.name for n in tree.nodes)
+        assert names == ["My Invert", "My Out", "My RL"], f"利用者のコンポジタが戻らない: {names}"
+        assert tree.nodes["My Invert"].inputs["Color"].is_linked and tree.nodes["My Out"].inputs[0].is_linked
+        assert "fp_undo" not in scene
+        b = render("after.png")
+        d = float(np.abs(a - b).mean())
+        assert d < 0.01, f"外したあとの絵が STEP0 の前と違う(平均差 {d:.4f})"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+        bpy.ops.wm.read_homefile(use_empty=True)
+
+
 def main():
     print("[tests] FreePencil smoke tests")
     fp_batch.install_addon()

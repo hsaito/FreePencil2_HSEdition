@@ -81,6 +81,9 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
 
         続行できない場合は None を返す。戻り値は _finish() に渡す。
         """
+        # 「FreePencil を外す」ための元の値を、何かを変える前に控える
+        from . import undo_setup
+        undo_setup.snapshot(context)
         scene = context.scene
         view_layer = context.view_layer
 

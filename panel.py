@@ -82,6 +82,8 @@ class FP_PT_Step0(_FPSub, bpy.types.Panel):
                 box.label(text=t("Auto result: ") + label, icon="INFO")
         layout.operator(FP_OT_AUTO_SETUP.bl_idname,
                         text=t("Auto setup (STEP1-3)"), icon="AUTO")
+        # STEP0〜3 で足したものを消し、元の設定へ戻す(v2.9)。確認を出してから
+        layout.operator("freepencil.remove", text=t("Remove FreePencil"), icon="TRASH")
 
 
 class FP_PT_Step0Options(bpy.types.Panel):
