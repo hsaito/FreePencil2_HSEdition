@@ -146,6 +146,31 @@ def _update_line_weight_toggle(self, context):
     _rebuild_step3(context)
 
 
+def _update_compositor_view(self, context):
+    """「コンポジタープレビューを有効化」をその場で効かせる(v2.9)。
+
+    以前は STEP3 を押したときにしか見なかったので、チェックしても何も起きず、
+    外してもビューポートのコンポジタが「常に」のまま残った。チェックを入れたら
+    ビューポートをレンダー表示 + コンポジタ「常に」に、外したらコンポジタを切る
+    (レンダー表示はそのまま)。4.2 はビューポートのコンポジタが AOV を出さないので触らない
+    """
+    if _QUIET[0]:
+        return
+    from . import compat
+    if not compat.HAS_AOV_IN_VIEWPORT_COMPOSITOR or context.screen is None:
+        return
+    on = bool(context.scene.fp_enable_compositor_view)
+    for area in context.screen.areas:
+        if area.type != 'VIEW_3D':
+            continue
+        sh = area.spaces[0].shading
+        if on:
+            sh.type = 'RENDERED'
+            sh.use_compositor = 'ALWAYS'
+        else:
+            sh.use_compositor = 'DISABLED'
+
+
 def _update_line_weight_live(self, context):
     """線の強弱の見た目のつまみ(強さ・濃さ・縁)を、生成済みの STEP3 へ即時反映する。
 
@@ -355,7 +380,8 @@ def register_props():
         "fp_enable_compositor_view": BoolProperty(
             name="Enable Compositor Preview",
             description="Enable Compositor Preview",
-            default=True
+            default=True,
+            update=_update_compositor_view
         ),
         "fp_far_relief": FloatProperty(
             name="Far crush relief",

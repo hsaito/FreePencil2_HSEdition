@@ -310,6 +310,12 @@ msgstr "全自動セットアップ (STEP1〜3)"
 msgid "Remove FreePencil"
 msgstr "FreePencil を外す"
 
+msgid "Vertex colors (including STEP4 paint), AOVs and the line-art compositor will be removed, and the render settings restored. Ctrl+Z undoes this"
+msgstr "頂点カラー(STEP4 で塗った色も)・AOV・線画のコンポジタを消し、レンダー設定を元に戻します。Ctrl+Z で取り消せます"
+
+msgid "Remove"
+msgstr "外す"
+
 msgid "Remove the vertex colors, AOVs and compositor nodes FreePencil added, and restore the render settings and materials it changed (to before the first STEP). The shape of the meshes was never changed. Ctrl+Z undoes this"
 msgstr "FreePencil が足した頂点カラー・AOV・コンポジタのノードを消し、変えたレンダー設定と材質を最初の STEP の前に戻します。メッシュの形は変えていません。Ctrl+Z で取り消せます"
 

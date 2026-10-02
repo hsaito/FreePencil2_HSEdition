@@ -306,4 +306,15 @@ class FP_OT_REMOVE_FREEPENCIL(bpy.types.Operator):
     def invoke(self, context, event):
         if bpy.app.background or context.window is None:
             return self.execute(context)
-        return context.window_manager.invoke_confirm(self, event)
+        # 確認の題と本文を自分で渡す。既定では操作名がそのまま(英語のまま)出て、
+        # 何が消えるのか書かれていなかった(GUI で確認)
+        t = bpy.app.translations.pgettext
+        try:
+            return context.window_manager.invoke_confirm(
+                self, event, title=t("Remove FreePencil"),
+                message=t("Vertex colors (including STEP4 paint), AOVs and the line-art "
+                          "compositor will be removed, and the render settings restored. "
+                          "Ctrl+Z undoes this"),
+                confirm_text=t("Remove"), icon="WARNING", translate=False)
+        except TypeError:        # 古い版は題と本文を受け取らない
+            return context.window_manager.invoke_confirm(self, event)
