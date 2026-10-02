@@ -104,6 +104,9 @@ CJK_END = re.compile(
 # 箇条書きの記号は直後に空白が要る。これを見ないと `**太字**` で始まる
 # 段落を箇条書きと取り違えて、繋がずに空白を残してしまう
 BLOCK = re.compile(r"^\s*(?:[-*+]\s|\d+\.\s|[>|#]|```|$)")
+# 箇条書きの項目の続き(字下げした行)は、項目の行に繋いでよい。
+# これを見ないと「設定を 消して」のように項目の中に空白が残った
+LIST_ITEM = re.compile(r"^\s*(?:[-*+]\s|\d+\.\s)")
 # 行末の強調記号は文字と見なさない。`…ください。**` のような行も
 # 日本語で終わっていると判定したい
 TRAIL_EMPHASIS = re.compile(r"[*_`]+$")
@@ -122,7 +125,9 @@ def join_wrapped_lines(md: str) -> str:
     for cur in lines[1:]:
         prev = out[-1]
         if (CJK_END.search(TRAIL_EMPHASIS.sub("", prev))
-                and not BLOCK.match(cur) and not BLOCK.match(prev)):
+                and not BLOCK.match(cur)
+                and (not BLOCK.match(prev)
+                     or (LIST_ITEM.match(prev) and cur[:1].isspace()))):
             out[-1] = prev + cur.lstrip()
         else:
             out.append(cur)

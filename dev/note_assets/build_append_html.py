@@ -3,7 +3,7 @@
 note の編集画面は Markdown を受け付けないので、ブラウザで描いた文を
 コピーして貼る。触る場所ごとに枠を分け、それぞれにコピーボタンを付ける。
 
-    python dev/note_assets/build_append_html.py --version 2.8.2
+    python dev/note_assets/build_append_html.py --version 2.9.0
 
 出力は note/append_v<版>.html。
 """
@@ -18,9 +18,9 @@ from build_article_html import COPY_JS, CSS  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 ARGV = sys.argv[1:]
-VER = ARGV[ARGV.index("--version") + 1] if "--version" in ARGV else "2.8.2"
-DATE = ARGV[ARGV.index("--date") + 1] if "--date" in ARGV else "2026年09月26日"
-DATE_SLASH = ARGV[ARGV.index("--date-slash") + 1] if "--date-slash" in ARGV else "2026/09/26"
+VER = ARGV[ARGV.index("--version") + 1] if "--version" in ARGV else "2.9.0"
+DATE = ARGV[ARGV.index("--date") + 1] if "--date" in ARGV else "2026年10月03日"
+DATE_SLASH = ARGV[ARGV.index("--date-slash") + 1] if "--date-slash" in ARGV else "2026/10/03"
 OUT = ROOT / "note" / f"append_v{VER}.html"
 ZIP = ROOT / "dist" / f"freepencil2-{VER}.zip"
 PDF = ROOT / "dist" / f"FreePencil2_マニュアル_v{VER}.pdf"
@@ -72,35 +72,37 @@ def main() -> None:
     zip_size = f"{ZIP.stat().st_size:,} バイト" if ZIP.exists() else "（未ビルド）"
     blocks = [
         block("b1", "1. 冒頭の追記行",
-              "無料部分の一番上。いまの追記行を、下の文に置き換えます。"
-              "新記事の URL が決まったら、この行にリンクを付けてください。",
-              "追記：2026/08/30　FreePencil2 v2.7公開しました！",
+              "無料部分の一番上。いまの追記行（v2.8）を、下の文に置き換えます。",
+              "追記：2026/09/26　FreePencil2 v2.8公開しました！"
+              "　背景・メカ・キャラを、モデルに合わせて塗り分けます（60秒デモを新記事に載せています）",
               f"<p><strong>追記：{DATE_SLASH}　FreePencil2 v{VER[:3]}公開しました！</strong>"
-              "　背景・メカ・キャラを、モデルに合わせて塗り分けます（60秒デモを新記事に載せています）</p>"),
+              "　適用したあと元に戻す「FreePencil を外す」ボタンと、"
+              "手描き背景で遠くのビル街が黒くつぶれない描き方が入りました</p>"),
         block("b2", "2. 更新履歴に1行",
               "無料部分「アプリ本体について」の更新履歴の、一番上に足します。",
               None,
               f"<p>{DATE}　FreePencil2 v{VER} 更新</p>"),
         block("b3", "3. 有料部分「更新について」に足すブロック",
-              f"「2026年08月30日　FreePencil2 v2.7.0 更新」のブロックの<b>上</b>に入れ、"
+              "いまの「FreePencil2 v2.8.2 更新」のブロックの<b>上</b>に入れ、"
               f"その下に <code>{html.escape(ZIP.name)}</code> と "
               f"<code>{html.escape(PDF.name)}</code> を添付します。",
               None,
               f"<p><strong>{DATE}　FreePencil2 v{VER} 更新</strong></p>"
               f"<p>　{html.escape(ZIP.name)}　（アドオン本体）<br>"
               f"　{html.escape(PDF.name)}　（マニュアル全部入り・{pages_txt}）</p>"
-              "<p>v2.8 では STEP0 に「仕上がり」が付きました。</p>"
               "<ul>"
-              "<li><strong>精密（メカ）</strong> … v2.7 と同じ出力。既定はこれなので、"
-              "今までのファイルは同じ絵のまま開けます</li>"
-              "<li><strong>キャラ（手描き）</strong> … 輪郭にほんのり強弱。関節で線が切れない塗り方</li>"
-              "<li><strong>手描き背景</strong> … 遠くや細かい所の線を、つぶさずに薄く描き分ける</li>"
+              "<li><strong>FreePencil を外す</strong> … STEP0 の一番下のボタン。STEP0〜3 で足した色・"
+              "ノード・設定を消して、押す前の状態に戻します。アングルや光を変えて、"
+              "色付きで普通にレンダリングし直したいときに（コメントでいただいたご要望です）</li>"
+              "<li><strong>手描き背景：遠い区画をまとめる</strong> … 遠くのビルの窓が黒い縞の塊にならず、"
+              "輪郭と数本の帯で描かれます。カメラが近づくカットでも、近づく先の窓は消えません</li>"
+              "<li><strong>手描き背景：カメラが動くと遠景がちらつく</strong>のを直しました</li>"
+              "<li><strong>手描き背景の線</strong>を薄めずに黒を残すようにしました"
+              "（STEP0 を押し直すと効きます）</li>"
+              "<li>「コンポジタープレビューを有効化」が、チェックしたその場で効くようにしました</li>"
               "</ul>"
-              "<p>くわしい使い分けは、マニュアルの「仕上がり（v2.8）」の節をご覧ください。</p>"),
-        block("b4", "4. サポートの対応版",
-              "有料部分の最後「お答えが難しいこと」の1行を置き換えます。",
-              "未検証環境（Mac/Linux、4.5/5.2以外のBlender）での動作",
-              "<p>未検証環境（Mac/Linux、4.2〜5.2 以外の Blender）での動作</p>"),
+              "<p>くわしくは、マニュアルの「FreePencil を外す（v2.9）」と「仕上がり（v2.8）」の節を"
+              "ご覧ください。</p>"),
     ]
     files = (
         '<section class="step"><h2>添付するファイル</h2>'
@@ -108,12 +110,12 @@ def main() -> None:
         f"<tr><td>{html.escape(ZIP.name)}</td><td><code>dist/</code></td><td>{zip_size}</td></tr>"
         f"<tr><td>{html.escape(PDF.name)}</td><td><code>dist/</code></td><td>{pages_txt}</td></tr>"
         "</table>"
-        '<p class="where">v2.7.0 の ZIP と PDF は、今までどおり下に残してかまいません'
+        '<p class="where">v2.8.2 の ZIP と PDF は、今までどおり下に残してかまいません'
         "（過去版は note にだけ置く方針）。</p></section>")
     howto = (
         '<div class="howto"><b>使い方</b> — 対象の記事は '
         f'<a href="{ARTICLE}">ボタン1つで、3Dモデルが線画になる｜Blenderアドオン FreePencil2</a>'
-        " です。触るのは下の4か所だけで、本文の他の部分は変えません。"
+        " です。触るのは下の3か所だけで、本文の他の部分は変えません。"
         "青い枠の中を、枠ごとのボタンでコピーして note の編集画面に貼ってください"
         "（太字・箇条書きが残ります）。</div>")
     bar = ('<div class="copybar"><span class="msg" id="fp-msg" role="status" aria-live="polite">'
