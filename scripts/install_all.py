@@ -6,6 +6,7 @@
   python scripts\\install_all.py            # 採番 -> ビルド -> 全版へ導入 -> 検証
   python scripts\\install_all.py --no-build # 既存の dist を使う
   python scripts\\install_all.py --test     # 導入後にスモークテストも回す
+  python scripts\\install_all.py --test --audit  # さらに見え方の監査(基準の絵と並べたシート)
   python scripts\\install_all.py --release  # 通し番号を外して配布版を作る
 
 導入のたびに開発ビルドの通し番号(DEV_BUILD)を進める。パネルの表題が
@@ -180,6 +181,8 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--no-build", action="store_true")
     p.add_argument("--test", action="store_true")
+    p.add_argument("--audit", action="store_true",
+                   help="見え方の監査(dev/batch/visual_audit_run.py)も回す。判定はシートを目で見る")
     p.add_argument("--release", action="store_true",
                    help="開発ビルドの通し番号を外して配布版として作る")
     args = p.parse_args()
@@ -247,6 +250,17 @@ def main() -> None:
             if "/" in line and line.split("/")[0].split()[-1] != \
                     line.split("/")[1].split()[0]:
                 failed.append(f"{ver} tests")
+
+    if args.audit:
+        # 数値では合否を決めない(CLAUDE.md)。シートを出して、目で見るよう知らせる
+        r = subprocess.run([sys.executable, str(REPO / "dev" / "batch" / "visual_audit_run.py")],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        sheets = [ln for ln in r.stdout.splitlines() if ln.startswith("sheet:")]
+        if r.returncode != 0 or not sheets:
+            print(r.stdout[-2000:])
+            failed.append("audit")
+        for ln in sheets:
+            print(f"[audit]   {ln}  <- 目で見る(差の大きい順)")
 
     if failed:
         raise SystemExit(f"失敗: {failed}")

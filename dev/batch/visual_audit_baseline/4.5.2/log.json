@@ -1,0 +1,81 @@
+{
+ "default_precise": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "PRECISE"
+ },
+ "default_weighted": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "WEIGHTED"
+ },
+ "default_background": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "BACKGROUND"
+ },
+ "ground_precise": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "PRECISE"
+ },
+ "ground_weighted": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "WEIGHTED"
+ },
+ "ground_background": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "BACKGROUND"
+ },
+ "clear_bg": {
+  "preview": "WHITE",
+  "film_transparent": true,
+  "style": "BACKGROUND"
+ },
+ "preview_0_white": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "WEIGHTED"
+ },
+ "preview_1_mono_light": {
+  "preview": "MONO_LIGHT",
+  "film_transparent": false,
+  "style": "WEIGHTED"
+ },
+ "preview_2_none": {
+  "preview": "NONE",
+  "film_transparent": false,
+  "style": "WEIGHTED"
+ },
+ "preview_3_white": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "WEIGHTED"
+ },
+ "facades_precise": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "PRECISE"
+ },
+ "facades_precise_far_zoom": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "PRECISE"
+ },
+ "facades_background": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "BACKGROUND"
+ },
+ "facades_background_far_zoom": {
+  "preview": "WHITE",
+  "film_transparent": false,
+  "style": "BACKGROUND"
+ },
+ "_meta": {
+  "blender": "4.5.2 LTS",
+  "addon": "2.8.2"
+ }
+}

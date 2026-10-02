@@ -52,6 +52,10 @@ RGB距離が大きくても輝度が近ければ勾配が立たず、線は出�
 `python scripts/install_all.py --test`
 （portable 構成で同期が効いておらず、直したはずの修正が実機に入っていなかった前科あり）
 
+線の出方に関わる変更では `--test --audit` で見え方の監査も回し、出てきたシート
+（基準 | 今回 | 違う所）を**目で見る**。基準 `dev/batch/visual_audit_baseline/` を
+更新するのは、絵を見て意図どおりと判断したときだけ（`visual_audit_run.py --set-baseline`）。
+
 ## 3. アドオン本体への変更は勝手に入れない
 
 `mesh_islands.py` / `vertex_color.py` / `utils.py` / `fp_core.py` と
