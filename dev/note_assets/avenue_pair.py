@@ -17,6 +17,7 @@ OUT = Path(arg("--out", str(HERE / "out" / "avenue" / "pair"))).resolve()
 RES = int(arg("--res", "1920"))
 SAMPLES = int(arg("--samples", "16"))
 sys.path.insert(0, str(HERE.parent / "batch"))
+sys.path.insert(0, str(HERE))
 import bpy, fp_batch          # noqa: E402
 
 fp_batch.install_addon()
@@ -39,6 +40,12 @@ for style, name in (("PRECISE", "precise"), ("BACKGROUND", "background")):
     sc.render.resolution_x = RES
     sc.render.resolution_y = RES * 9 // 16
     sc.eevee.taa_render_samples = SAMPLES
+    if arg("--bake-keys"):          # STEP0 の前にカメラの動きをキーにする(render_boulevard_move と同じ道)
+        import cam_path
+        cam.data.lens = float(arg("--lens", "28"))
+        cam.data.shift_y = 0.0
+        cam_path.bake(sc, cam, cam_path.parse(arg("--bake-keys")), int(arg("--frames", "288")))
+        print("@@@ baked camera keys", sc.frame_start, sc.frame_end, flush=True)
     sc.fp_auto_style = style
     bpy.ops.freepencil.auto_setup("EXEC_DEFAULT")       # STEP0 だけ。そのあと何も変えない
     print("@@@", style, {k: round(float(getattr(sc, k)), 3) for k in

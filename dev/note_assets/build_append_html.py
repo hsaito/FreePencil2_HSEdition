@@ -71,11 +71,16 @@ def main() -> None:
     pages_txt = f"全{pages}ページ" if pages else "全ページ"
     zip_size = f"{ZIP.stat().st_size:,} バイト" if ZIP.exists() else "（未ビルド）"
     blocks = [
+        block("b0", "0. 記事のタイトル",
+              "タイトルの後ろの追記を置き換えます（前半はそのまま）。",
+              "ボタン1つで、3Dモデルが線画になる｜Blenderアドオン FreePencil2"
+              "　追記：2026/09/28　FreePencil2 v2.8公開しました！",
+              "<p>ボタン1つで、3Dモデルが線画になる｜Blenderアドオン FreePencil2"
+              f"　追記：{DATE_SLASH}　FreePencil2 v{VER}公開しました！</p>"),
         block("b1", "1. 冒頭の追記行",
               "無料部分の一番上。いまの追記行（v2.8）を、下の文に置き換えます。",
-              "追記：2026/09/26　FreePencil2 v2.8公開しました！"
-              "　背景・メカ・キャラを、モデルに合わせて塗り分けます（60秒デモを新記事に載せています）",
-              f"<p><strong>追記：{DATE_SLASH}　FreePencil2 v{VER} 公開しました！</strong>"
+              "追記：2026/09/28　FreePencil2 v2.8公開しました！",
+              f"<p><strong>追記：{DATE_SLASH}　FreePencil2 v{VER}公開しました！</strong>"
               "　適用したあと元に戻す「FreePencil を外す」ボタンと、"
               "手描き背景で遠くのビル街が黒くつぶれない描き方が入りました</p>"),
         block("b2", "2. 更新履歴に1行",
@@ -115,7 +120,7 @@ def main() -> None:
     howto = (
         '<div class="howto"><b>使い方</b> — 対象の記事は '
         f'<a href="{ARTICLE}">ボタン1つで、3Dモデルが線画になる｜Blenderアドオン FreePencil2</a>'
-        " です。触るのは下の3か所だけで、本文の他の部分は変えません。"
+        " です。触るのは下の4か所だけで（新しい記事は更新しません）、本文の他の部分は変えません。"
         "青い枠の中を、枠ごとのボタンでコピーして note の編集画面に貼ってください"
         "（太字・箇条書きが残ります）。</div>")
     bar = ('<div class="copybar"><span class="msg" id="fp-msg" role="status" aria-live="polite">'
