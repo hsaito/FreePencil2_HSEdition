@@ -27,6 +27,9 @@ HOLD_OUT = float(arg("--hold-out", "2.5"))
 LB_OFF = arg("--label-off", "つぶれ軽減 OFF")
 LB_ON = arg("--label-on", "つぶれ軽減 ON(既定)")
 POS = [tuple(float(v) for v in k.split(":")) for k in arg("--pos", "").split(",") if k]   # 境界線の位置(秒:画面幅の割合)
+# 左右の連番を別々の場所から取る(片方だけ撮り直したとき)。無ければ --dir の r0/ と r1/
+R0 = Path(arg("--r0", str(D / "r0")))
+R1 = Path(arg("--r1", str(D / "r1")))
 CAPTION = arg("--caption", "同じシーン・同じ設定。違いは「つぶれ軽減」だけ")
 FONT = "C:/Windows/Fonts/meiryob.ttc"
 
@@ -43,9 +46,9 @@ def smoother(t):
     return t * t * t * (t * (t * 6 - 15) + 10)
 
 
-names = sorted(p.name for p in (D / "r1").glob("f*.png"))
+names = sorted(p.name for p in R1.glob("f*.png"))
 n_total = len(names)
-a0 = white(D / "r1" / names[0])
+a0 = white(R1 / names[0])
 W, H = a0.size
 fs = max(24, H // 34)
 font = ImageFont.truetype(FONT, fs)
@@ -86,8 +89,8 @@ for k in range(n_total):
     else:
         prog = smoother((t_sec - HOLD_IN) / SLIDE)
         x = int(round(W * (1.0 - prog)))          # 境界線の位置(右端 -> 左端)
-    off = white(D / "r0" / names[k])
-    on = white(D / "r1" / names[k])
+    off = white(R0 / names[k])
+    on = white(R1 / names[k])
     frame = off.copy()
     if x < W:
         frame.paste(on.crop((x, 0, W, H)), (x, 0))

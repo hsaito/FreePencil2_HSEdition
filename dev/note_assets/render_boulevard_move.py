@@ -75,7 +75,14 @@ for style in STYLES:
     sc.eevee.taa_render_samples = SAMPLES
     if arg("--preview"):                       # プレビューの種類(WHITE / MONO_LIGHT / NONE)
         sc.fp_preview_mode = arg("--preview")
+    for kv in [v for v in arg("--set", "").split(",") if v]:   # 確かめ用: プロパティを変える(k=v)
+        k, v = kv.split("=")
+        setattr(sc, k, type(getattr(sc, k))(float(v)))
+        print("@@@ set", k, getattr(sc, k), flush=True)
     cam = sc.camera
+    # STEP0 の前にカメラの動きをキーにしてある(avenue_pair --bake-keys)と、キーが下の
+    # 手書きの位置を上書きしてカメラが動かない。塗りは STEP0 で決まっているので消してよい
+    cam.animation_data_clear()
     cam.data.lens = float(arg("--lens", "28"))
     cam.data.shift_y = 0.0
     movers = [o for o in sc.objects if "fp_v" in o]
