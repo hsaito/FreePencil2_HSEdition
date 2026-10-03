@@ -1,4 +1,4 @@
-"""連番のちらつきを、複数の版で並べて見る(v2.9 の「動くと遠景がちらつく」の測り台)。
+"""連番のちらつきを、複数の版で並べて見る(v2.8.3 の「動くと遠景がちらつく」の測り台)。
 
   python flicker_compare.py --dirs out/v29/avenue/seq_cur,out/v29/avenue/seq_off --labels 今,OFF
       [--frames 50-73] [--crop 780,560,1140,760] [--out out/v29/avenue/flicker]

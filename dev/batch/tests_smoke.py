@@ -2992,7 +2992,7 @@ def t63():
     tmp = Path(tempfile.mkdtemp(prefix="fp_t63_"))
     try:
         scene = build()
-        assert scene.fp_lw_stripe_fade == 0.0, "v2.9: 手描き背景の既定では縞を薄くは切る(動くとちらつく)"
+        assert scene.fp_lw_stripe_fade == 0.0, "v2.8.3: 手描き背景の既定では縞を薄くは切る(動くとちらつく)"
         f0, n0 = ink(scene, tmp / "s0.png", 0.0)
         f1, n1 = ink(scene, tmp / "s1.png", 1.0)
         assert f0 > 0 and n0 > 0, (f0, n0)
@@ -3561,7 +3561,7 @@ def t78():
 @test("background: far islands merge (far facade keeps its outline, near facade keeps its windows)")
 def t79():
     # 遠くのビルの窓が、どの仕上がりでも黒い縞の塊になった。手描き背景では、
-    # 画面上で小さい区画(窓)を近くの壁へまとめる(fp_far_lod_px、v2.9)。
+    # 画面上で小さい区画(窓)を近くの壁へまとめる(fp_far_lod_px、v2.8.3)。
     # 同じ形の壁を手前と奥に置き、奥だけ色数が減ること。精密では減らないこと
     import math
 
@@ -3621,7 +3621,7 @@ def t79():
 @test("remove FreePencil: everything added is gone and the render matches the one before STEP0")
 def t80():
     # 利用者から「適用したあと戻す方法は？ アングルを変えて光源込みでレンダリングし直したい」
-    # (note のコメント)。v2.9 で「FreePencil を外す」を足した。利用者の設定(透過の材質、
+    # (note のコメント)。v2.8.3 で「FreePencil を外す」を足した。利用者の設定(透過の材質、
     # 材質の無い物、自分のコンポジタ、AgX、100%、背景は不透明)が全部元に戻り、
     # STEP0 の前と同じ絵でレンダリングされること
     import math

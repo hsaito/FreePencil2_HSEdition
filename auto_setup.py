@@ -137,7 +137,7 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
         scene.fp_lw_dense = 0.3 if background else 0.0
         # 細かすぎる縞を奥ほど薄く。低い視点から水平の線の多い面を見ると、奥が
         # つぶれて動かすとちらついた(試験場 test_grazing で総当り)
-        # v2.9 で既定を切った(0)。カメラが動くと、遠くの窓の格子が画素とのずれで
+        # v2.8.3 で既定を切った(0)。カメラが動くと、遠くの窓の格子が画素とのずれで
         # コマごとに見え方を変え、薄める範囲と灰色の濃さが揺れて灰色のまだらが
         # ちらついた。縁石のような近い 2 本の線も細い二重線になった(大通りの飛行で
         # 確認、dev/note_assets/flicker_compare.py)。低い視点の横縞のモアレには効くので、
@@ -150,7 +150,7 @@ class FP_OT_AUTO_SETUP(vertex_color.FPProgressModalMixin, bpy.types.Operator):
                              "fp_lw_relief": 1.0 if background else 0.0})
         # 葉を房に(カエデは 4〜8、ヤシは 1 が良い。既定は 4)
         scene.fp_foliage_clumps = 4 if background else 0
-        # 遠い区画をまとめる 500px(v2.9)。150 ではほとんど効かず、500 で奥の高層が
+        # 遠い区画をまとめる 500px(v2.8.3)。150 ではほとんど効かず、500 で奥の高層が
         # 輪郭と帯になった(dev/note_assets/far_lod_proto.py)。手前は変わらない
         scene.fp_far_lod_px = 500.0 if background else 0.0
         # 細い線(精密の分割)を重ねる。線を太くせず本数で戻す(0.35 ではアパートの

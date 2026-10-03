@@ -82,7 +82,7 @@ class FP_PT_Step0(_FPSub, bpy.types.Panel):
                 box.label(text=t("Auto result: ") + label, icon="INFO")
         layout.operator(FP_OT_AUTO_SETUP.bl_idname,
                         text=t("Auto setup (STEP1-3)"), icon="AUTO")
-        # STEP0〜3 で足したものを消し、元の設定へ戻す(v2.9)。確認を出してから。
+        # STEP0〜3 で足したものを消し、元の設定へ戻す(v2.8.3)。確認を出してから。
         # 全自動セットアップのすぐ下に並べると押し間違えるので、間を空ける
         layout.separator(factor=1.5)
         layout.operator("freepencil.remove", text=t("Remove FreePencil"), icon="TRASH")
@@ -295,7 +295,7 @@ class FP_PT_Step3Options(bpy.types.Panel):
         col.prop(scene, "fp_lw_ink", text=t("Ink darkness"), slider=True)
         col.prop(scene, "fp_lw_soften", text=t("Soften edges"), slider=True)
         col.prop(scene, "fp_gap_fill", text=t("Fill leaf gaps"))
-        # 既定 0(v2.9)。低い視点の横縞のモアレが気になるときだけ入れる
+        # 既定 0(v2.8.3)。低い視点の横縞のモアレが気になるときだけ入れる
         col.prop(scene, "fp_lw_stripe_fade", text=t("Fade fine stripes"), slider=True)
 
         # チャンネル別の線の強さ(生成済みノードへ即時反映)

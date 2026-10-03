@@ -8,7 +8,7 @@
   preview_*      キャラでプレビューを 白 -> モノクロ -> マテリアル -> 白 と切り替えた各段
                  (モノクロのあと白に戻らなかった、v2.8.2)
   facades_*      手前(30m)と奥(300m)の同じ壁(窓 36 個)、精密と手描き背景。_far_zoom は奥を望遠で
-                 (遠い区画をまとめる、v2.9)
+                 (遠い区画をまとめる、v2.8.3)
 
   blender -b --factory-startup --python visual_audit.py -- --out <dir>
 外側から回すのは visual_audit_run.py(版ごとに回して基準と並べる)。

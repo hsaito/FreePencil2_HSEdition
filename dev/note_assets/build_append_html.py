@@ -3,7 +3,7 @@
 note の編集画面は Markdown を受け付けないので、ブラウザで描いた文を
 コピーして貼る。触る場所ごとに枠を分け、それぞれにコピーボタンを付ける。
 
-    python dev/note_assets/build_append_html.py --version 2.9.0
+    python dev/note_assets/build_append_html.py --version 2.8.3
 
 出力は note/append_v<版>.html。
 """
@@ -18,7 +18,7 @@ from build_article_html import COPY_JS, CSS  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 ARGV = sys.argv[1:]
-VER = ARGV[ARGV.index("--version") + 1] if "--version" in ARGV else "2.9.0"
+VER = ARGV[ARGV.index("--version") + 1] if "--version" in ARGV else "2.8.3"
 DATE = ARGV[ARGV.index("--date") + 1] if "--date" in ARGV else "2026年10月03日"
 DATE_SLASH = ARGV[ARGV.index("--date-slash") + 1] if "--date-slash" in ARGV else "2026/10/03"
 OUT = ROOT / "note" / f"append_v{VER}.html"
@@ -75,7 +75,7 @@ def main() -> None:
               "無料部分の一番上。いまの追記行（v2.8）を、下の文に置き換えます。",
               "追記：2026/09/26　FreePencil2 v2.8公開しました！"
               "　背景・メカ・キャラを、モデルに合わせて塗り分けます（60秒デモを新記事に載せています）",
-              f"<p><strong>追記：{DATE_SLASH}　FreePencil2 v{VER[:3]}公開しました！</strong>"
+              f"<p><strong>追記：{DATE_SLASH}　FreePencil2 v{VER} 公開しました！</strong>"
               "　適用したあと元に戻す「FreePencil を外す」ボタンと、"
               "手描き背景で遠くのビル街が黒くつぶれない描き方が入りました</p>"),
         block("b2", "2. 更新履歴に1行",
@@ -101,7 +101,7 @@ def main() -> None:
               "（STEP0 を押し直すと効きます）</li>"
               "<li>「コンポジタープレビューを有効化」が、チェックしたその場で効くようにしました</li>"
               "</ul>"
-              "<p>くわしくは、マニュアルの「FreePencil を外す（v2.9）」と「仕上がり（v2.8）」の節を"
+              "<p>くわしくは、マニュアルの「FreePencil を外す（v2.8.3）」と「仕上がり（v2.8）」の節を"
               "ご覧ください。</p>"),
     ]
     files = (

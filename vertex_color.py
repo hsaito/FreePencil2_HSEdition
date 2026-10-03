@@ -729,7 +729,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                         print(f"[FreePencil] '{obj.name}': 葉を房に "
                               f"{n_before}島 -> {len(islands)}島(房{n_clumps})")
 
-                # --- 2.8 遠い区画をまとめる(手描き背景、v2.9) ---
+                # --- 2.8 遠い区画をまとめる(手描き背景、v2.8.3) ---
                 # 房の後に置く: 手前の木の房は崩さず、遠い木の房だけをまとめる。
                 # 同じメッシュを使う物(並木など)は、カメラに近い数本で測り、
                 # 一番大きく写る値を使う(手前の物を粗くしない)
