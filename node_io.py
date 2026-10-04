@@ -648,6 +648,13 @@ class NODE_OT_export_group_to_python(Operator, ExportHelper):
     def description(cls, context, properties):
         return bpy.app.translations.pgettext("Export Group to Python")
 
+    @classmethod
+    def poll(cls, ctx):
+        # ノードエディタの中でだけ動く(ほかの場所から呼ぶと edit_tree が無く落ちた)
+        sd = getattr(ctx, "space_data", None)
+        return (sd is not None and getattr(sd, "edit_tree", None) is not None
+                and sd.edit_tree.bl_idname == "CompositorNodeTree")
+
     def execute(self, ctx):
         script = _export_impl(ctx, "CompositorNodeTree", "CompositorNodeTree", self)
         if script:
@@ -666,6 +673,13 @@ class NODE_OT_import_group_from_python(Operator, ImportHelper):
     @classmethod
     def description(cls, context, properties):
         return bpy.app.translations.pgettext("Import Group from Python")
+
+    @classmethod
+    def poll(cls, ctx):
+        # ノードエディタの中でだけ動く(ほかの場所から呼ぶと edit_tree が無く落ちた)
+        sd = getattr(ctx, "space_data", None)
+        return (sd is not None and getattr(sd, "edit_tree", None) is not None
+                and sd.edit_tree.bl_idname == "CompositorNodeTree")
 
     def execute(self, ctx):
         newg = _import_impl(ctx, "CompositorNodeTree", self, self.filepath)
@@ -712,6 +726,13 @@ class SHADER_OT_export_group_to_python(Operator, ExportHelper):
     def description(cls, context, properties):
         return bpy.app.translations.pgettext("Export Shader Group to Python")
 
+    @classmethod
+    def poll(cls, ctx):
+        # ノードエディタの中でだけ動く(ほかの場所から呼ぶと edit_tree が無く落ちた)
+        sd = getattr(ctx, "space_data", None)
+        return (sd is not None and getattr(sd, "edit_tree", None) is not None
+                and sd.edit_tree.bl_idname == "ShaderNodeTree")
+
     def execute(self, ctx):
         script = _export_impl(ctx, "ShaderNodeTree", "ShaderNodeTree", self)
         if script:
@@ -730,6 +751,13 @@ class SHADER_OT_import_group_from_python(Operator, ImportHelper):
     @classmethod
     def description(cls, context, properties):
         return bpy.app.translations.pgettext("Import Shader Group to Python")
+
+    @classmethod
+    def poll(cls, ctx):
+        # ノードエディタの中でだけ動く(ほかの場所から呼ぶと edit_tree が無く落ちた)
+        sd = getattr(ctx, "space_data", None)
+        return (sd is not None and getattr(sd, "edit_tree", None) is not None
+                and sd.edit_tree.bl_idname == "ShaderNodeTree")
 
     def execute(self, ctx):
         newg = _import_impl(ctx, "ShaderNodeTree", self, self.filepath)

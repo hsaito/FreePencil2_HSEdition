@@ -54,7 +54,12 @@ def create_node_tree_freepencil_v1_1_0_test():
     n_1.hide = False
     n_1.width = 100.0
     _set_filter(n_1, 'SOBEL')
-    n_1.inputs[0].default_value = 1.0
+    # 入力は名前で引く。5.x で Filter の入力の並びが変わり(Image が先頭)、
+    # 添字 0 に 1.0 を入れて TypeError で止まった(総当りで発見。テストノード
+    # には 5.x 用のスクリプトが無い)
+    _fac = n_1.inputs.get('Fac') or n_1.inputs.get('Factor')
+    if _fac is not None:
+        _fac.default_value = 1.0
 
     n_2 = ng.nodes.new('NodeGroupOutput')
     n_2.name = 'Group Output'
@@ -104,6 +109,33 @@ def create_node_tree_freepencil_v1_1_0_test():
         if bpy.app.version < (4, 5, 0):
             ng.links.new(from_sock, to_sock)
             return
+        if bpy.app.version >= (5, 0, 0):
+            # 5.x の Normal は入力の口が無い。プロノード(_5x)と同じく
+            # R/G/B に分けて平均する
+            x, y = from_sock.node.location
+            sep = ng.nodes.new('CompositorNodeSeparateColor')
+            sep.label = 'freepencil'
+            sep.hide = True
+            sep.location = (x + 40.0, y - 30.0)
+            ng.links.new(from_sock, sep.inputs[0])
+            a1 = ng.nodes.new(_nt('CompositorNodeMath'))
+            a1.operation = 'ADD'
+            a2 = ng.nodes.new(_nt('CompositorNodeMath'))
+            a2.operation = 'ADD'
+            dv = ng.nodes.new(_nt('CompositorNodeMath'))
+            dv.operation = 'DIVIDE'
+            dv.inputs[1].default_value = 3.0
+            for k, nd in enumerate((a1, a2, dv)):
+                nd.label = 'freepencil'
+                nd.hide = True
+                nd.location = (x + 90.0 + 40.0 * k, y - 30.0)
+            ng.links.new(sep.outputs[0], a1.inputs[0])
+            ng.links.new(sep.outputs[1], a1.inputs[1])
+            ng.links.new(a1.outputs[0], a2.inputs[0])
+            ng.links.new(sep.outputs[2], a2.inputs[1])
+            ng.links.new(a2.outputs[0], dv.inputs[0])
+            ng.links.new(dv.outputs[0], to_sock)
+            return
         nrm = ng.nodes.new('CompositorNodeNormal')
         nrm.label = 'freepencil'
         nrm.hide = True
@@ -129,7 +161,7 @@ def create_node_tree_freepencil_v1_1_0_test():
     # Link 2: Group Input[mecha_color] -> Mix[Image]
     ng.links.new(n_3.outputs[1], n_0.inputs[2])
     # Link 3: Mix[Image] -> Filter[Image]
-    ng.links.new(n_0.outputs[0], n_1.inputs[1])
+    ng.links.new(n_0.outputs[0], n_1.inputs['Image'])
     # Link 4: Filter[Image] -> ColorRamp[Fac]  (color->float: RGB average)
     link_avg(n_1.outputs[0], n_4.inputs[0])
     # Debug: ノード一覧

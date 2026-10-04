@@ -15,6 +15,12 @@ from mathutils import Vector
 from . import mesh_islands
 from . import utils
 
+# パレットの上限。実際の色数は palette_for_diversity が距離・輝度差の契約を
+# 見て決めるので、既定の輝度窓では5色前後で頭打ちになる。窓を広げた
+# パーツ・トーン分けのときに、もう少し取れる余地を残すための上限
+PALETTE_SIZE = 16
+
+
 logger = logging.getLogger(__name__)
 
 # シード上限（Blender IntProperty は符号付き32bit のため 2^31-1 に収める）
@@ -35,6 +41,20 @@ VCOL_LAYER_MECHA = "mecha_color"
 VCOL_LAYER_MASK = "mask_color"
 VCOL_LAYER_LINE = "line_color"
 VCOL_LAYER_BONE = "bone_color"
+# キャラのざっくり塗りで「小さいパーツ」とみなす面積の割合(オブジェクト全体比)
+COARSE_SMALL_PART = 0.02
+# キャラ(ざっくり塗り)でボーンの色を隣の頂点と平均する回数
+BONE_SMOOTH_ITERS = 8
+# リグ付きでも、頂点の大半がボーン1本に固定(剛体)されていればメカとして塗る。
+# ロボットは部品ごとに1本のボーンへ100%で付き、人は関節でなめらかに混ざる。
+# 実測(頂点のうちボーン1本が 99% 以上を持つ割合): ザク 0.94 /
+# anime-girl 0.80(髪・スカートが頭や腰に固定) / fredy 0.15 / man_01 0.27 /
+# mozo 0.20 / space_scavenger(宇宙服の人) 0.41
+RIGID_MECHA = 0.9
+# ボーンが少ないリグは判定しない(キャラのまま)。ボーンが 1〜2 本なら頂点は
+# どうしても1本に固定される。デッサン人形は頭だけ別のリグ(ボーン 2 本)で、
+# その頭が 0.93 になりロボットと判定された。ザクは 64 本すべてを使う
+RIGID_MIN_BONES = 8
 DEFAULT_MATERIAL_NAME = "FreePencil_Material"
 
 # ハッシュ関数
@@ -70,6 +90,138 @@ def get_pseudo_random_float_from_vec(
     return (h / 0xFFFFFFFF)
 
 # RGB色間のユークリッド距離
+_RIGID_CACHE = {}
+
+
+def _rigid_counts(obj, bones, used):
+    """1 メッシュの (ウェイトのある頂点数, ボーン1本が 99% 以上を持つ頂点数)。
+    ボーン名と一致する頂点グループだけを数える(マスク用のグループは除く)。
+    ウェイトの付いたボーンの名前を used に足す。"""
+    name_of = {vg.index: vg.name for vg in obj.vertex_groups if vg.name in bones}
+    if not name_of:
+        return 0, 0
+    tot = rigid = 0
+    for v in obj.data.vertices:
+        gs = [(g.group, g.weight) for g in v.groups
+              if g.group in name_of and g.weight > 1e-4]
+        if not gs:
+            continue
+        tot += 1
+        ws = [w for _, w in gs]
+        if max(ws) >= 0.99 * sum(ws):
+            rigid += 1
+        for gi, _ in gs:
+            used.add(name_of[gi])
+    return tot, rigid
+
+
+def rigid_ratio(obj):
+    """(割合, 使っているボーンの数)。このメッシュを動かすリグ(アーマチュア)で
+    動く全メッシュのうち、ボーン1本がウェイトの 99% 以上を持つ頂点の割合。
+
+    リグ単位でまとめて測る。部品が別オブジェクトのキャラでは、頭だけ・兜だけは
+    1本のボーンに固定されていて、1つずつ測るとロボットに見えた(デッサン人形の
+    頭 0.93、全体では 0.64)。
+    """
+    arm = next((m.object for m in obj.modifiers
+                if m.type == 'ARMATURE' and m.object), None)
+    if arm is None or obj.type != 'MESH':
+        return 0.0, 0
+    if arm.name in _RIGID_CACHE:
+        return _RIGID_CACHE[arm.name]
+    bones = set(arm.data.bones.keys())
+    used = set()
+    tot = rigid = 0
+    for o in bpy.data.objects:
+        if o.type != 'MESH' or not any(m.type == 'ARMATURE' and m.object == arm
+                                       for m in o.modifiers):
+            continue
+        t, r = _rigid_counts(o, bones, used)
+        tot += t
+        rigid += r
+    res = (rigid / tot if tot else 0.0, len(used))
+    _RIGID_CACHE[arm.name] = res
+    return res
+
+
+def paint_as(obj):
+    """手描き系の仕上がりでの塗り方: 'CHARA'(ざっくり塗り + ボーン塗り)か
+    'MECHA'(角度で分ける)。
+
+    オブジェクトの設定(fp_paint_as)が自動なら、リグの無い物はメカ、
+    リグ付きはボーンを RIGID_MIN_BONES 本以上使い、rigid_ratio >= RIGID_MECHA
+    ならメカ、それ以外はキャラ。
+    判定の結果は obj["fp_paint_auto"] に残す(パネルに出す)。
+    """
+    mode = getattr(obj, "fp_paint_as", 'AUTO')
+    if mode in ('MECHA', 'CHARA'):
+        return mode
+    rigged = any(m.type == 'ARMATURE' and m.object for m in obj.modifiers)
+    if not rigged:
+        kind = 'MECHA'
+    else:
+        r, n_bones = rigid_ratio(obj)
+        kind = ('MECHA' if r >= RIGID_MECHA and n_bones >= RIGID_MIN_BONES
+                else 'CHARA')
+        obj["fp_rigid_ratio"] = round(r, 3)
+    obj["fp_paint_auto"] = kind
+    return kind
+
+
+FAR_LOD_FRAME_SAMPLES = 33   # カメラが動くとき、動きの範囲から取る位置の数
+FAR_LOD_REF_WIDTH = 1920     # 遠い区画のしきい値(px^2)はこの横幅の絵で測る
+
+
+def far_lod_cameras(scene):
+    """遠い区画をまとめる(mesh_islands.merge_far_islands)ためのカメラ。
+
+    戻り値 (位置のリスト, 焦点距離 px) か None(カメラが無い・平行投影)。
+    焦点距離は「横 1920 px の絵」に揃えて測る(FAR_LOD_REF_WIDTH)。レンダの
+    大きさで変えると、小さく試し撮りしたときと本番で塗りが変わり、240px の
+    試験では 1m の箱の側面までまとまって角の線が消えた(t58)。
+    カメラ(か親)にアニメーションか拘束があれば、シーンのフレーム範囲から
+    位置を取る。近づく予定の物は、一番近づく位置で粗さを決める
+    (STEP0 の位置だけで決めると、近づいたビルの窓が描かれないままになった)。
+    """
+    cam = scene.camera
+    if cam is None or cam.type != 'CAMERA' or cam.data.type != 'PERSP':
+        return None
+    rx, ry = scene.render.resolution_x, scene.render.resolution_y
+    fit = cam.data.sensor_fit
+    if fit == 'VERTICAL':
+        size, sensor = ry, cam.data.sensor_height
+    elif fit == 'HORIZONTAL':
+        size, sensor = rx, cam.data.sensor_width
+    else:
+        size, sensor = max(rx, ry), cam.data.sensor_width
+    # 横 1920 に揃える(縦横比は保つ)
+    size = size * FAR_LOD_REF_WIDTH / max(rx, 1)
+    fpx = size * cam.data.lens / max(sensor, 1e-6)
+
+    def moves(o):
+        while o is not None:
+            ad = o.animation_data
+            if (ad is not None and (ad.action is not None or len(ad.drivers))) or len(o.constraints):
+                return True
+            o = o.parent
+        return False
+
+    if not moves(cam):
+        return [tuple(cam.matrix_world.translation)], fpx
+    f0, f1 = scene.frame_start, scene.frame_end
+    keep = scene.frame_current
+    n = max(1, min(FAR_LOD_FRAME_SAMPLES, f1 - f0 + 1))
+    pos = []
+    try:
+        for k in range(n):
+            f = int(round(f0 + (f1 - f0) * k / max(1, n - 1)))
+            scene.frame_set(f)
+            pos.append(tuple(cam.matrix_world.translation))
+    finally:
+        scene.frame_set(keep)
+    return pos, fpx
+
+
 def color_distance_rgb(rgb1, rgb2):
     """Return the Euclidean distance between two RGB tuples."""
     return math.sqrt(sum([(c1 - c2)**2 for c1, c2 in zip(rgb1, rgb2)]))
@@ -107,6 +259,8 @@ def make_vertex_color_gen(context, quiet=False):
 
     STEP0(auto_setup)が STEP1 と同じ進捗バーで駆動するための共有入口。
     """
+    from . import undo_setup          # 「FreePencil を外す」ための元の値を控える
+    undo_setup.snapshot(context)
     state = VCRunState(quiet=quiet)
     return LINK_MAKE_OT_FP._run(state, context), state
 
@@ -226,6 +380,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
         time_start = time.time()
         scene = context.scene
         active_obj = context.active_object
+        _RIGID_CACHE.clear()          # ウェイトを直したあとの塗り直しで古い判定を使わない
 
         # --- マスターシード決定（再現性のため）---
         # ランダム指定時は新しいシードを生成し、実際に使った値を
@@ -287,6 +442,8 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
         color_noise_scale = getattr(scene, "fp_color_noise_scale", default_noise_scale)
         min_neighbor_color_distance = getattr(scene, "fp_min_neighbor_color_distance", 0.5)
         max_color_generation_retries = getattr(scene, "fp_max_color_retries", 30)
+        ridge_amount = getattr(scene, "fp_ridge_amount", 0.0)
+        ridge_radius = getattr(scene, "fp_ridge_radius", 0.08)
         angle_threshold_rad = math.radians(scene.fp_sharp_edges)
         clear_sharps_option = scene.fp_sharp_clear # UIの「シャープを削除」オプション
         # UVシーム/マテリアル境界を島境界として使う(アーティストの意図情報)
@@ -356,6 +513,10 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                         break
                 many_loose_parts = total_parts >= 8
 
+        # 遠い区画をまとめる(手描き背景、既定 0 = 通らない)。カメラは1回だけ見る
+        far_lod_px = float(getattr(scene, "fp_far_lod_px", 0.0))
+        far_cams = far_lod_cameras(scene) if far_lod_px > 0.0 else None
+
         # オブジェクト内フェーズの刻みは編集モード中に制御を返すため、その
         # たびにビューポートが編集モード状態で再描画され、パーツ数が多いと
         # 画面が激しく点滅する。パーツが多ければオブジェクト単位の刻み
@@ -411,18 +572,37 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     bpy.ops.object.mode_set(mode=original_mode)
                 continue
 
+            # キャラ(リグ付き)は手描き系の仕上がりでは「ざっくり塗り」にする。
+            # 角度・UV シームでは分けず、つながったメッシュ x マテリアルごとに
+            # 1色。キャラの線は、このパーツの境目とボーンの塗り(ウェイトで
+            # ぼかした bone_color)で出す。角度で細かく分けると、腕や髪が線で
+            # 黒く潰れた(ジョギングの動画で実測)
+            #
+            # 塗り方はオブジェクトごとに上書きできる(fp_paint_as)。自動のときは
+            # リグの付き方で見分ける: ボーン1本に固定された頂点が多い物は
+            # ロボットとしてメカの塗り(精密と同じ角度の分け方)にする。
+            # リグ付きのザクがざっくり塗りになり、胴体が1色でパネルの線が
+            # 消えた(棲み分けの試験、dev/note_assets/out/separation)
+            rig_coarse = (bool(scene.get("fp_rig_coarse"))
+                          and paint_as(obj) == 'CHARA')
             try:
                 # --- 0. 自動しきい値: 二面角の分布からモデル系統を判定 ---
                 effective_threshold_rad = angle_threshold_rad
                 auto_merge_pct = None
-                if getattr(scene, "fp_sharp_auto", False):
+                # サブディビジョンが生きていると、STEP1 が見ているのは
+                # なめらかな形を作るための粗いケージ。塗った色はサブディブ
+                # で補間されてから描かれる
+                has_subsurf = any(m.type == 'SUBSURF' and m.show_viewport
+                                  for m in obj.modifiers)
+                if getattr(scene, "fp_sharp_auto", False) and not rig_coarse:
                     angle_samples = topo.angle_samples_deg()
                     # リグ付きモデルは bone_color が線の主役なので保守的に
                     has_arm = any(m.type == 'ARMATURE' and m.object
                                   for m in obj.modifiers)
                     auto_deg, auto_merge_pct = utils.choose_auto_threshold(
                         angle_samples, has_armature=has_arm,
-                        many_parts=many_loose_parts)
+                        many_parts=many_loose_parts, has_subsurf=has_subsurf,
+                        split_floor=getattr(scene, "fp_auto_split_floor", None))
                     effective_threshold_rad = math.radians(auto_deg)
                     print(f"[FreePencil] auto sharp threshold for '{obj.name}': "
                           f"{auto_deg:.1f} deg"
@@ -434,10 +614,85 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # 復元漏れの温床だった。アーティストの意図は Freestyle
                 # マークではなく「シャープ」で受け取る(実測でマークは
                 # 使われておらず、5.x では属性ごと消えているため)。
-                topo.mark_boundaries(effective_threshold_rad,
-                                     seam_boundaries_option,
-                                     clear_sharps_option)
+                if getattr(scene, "fp_sharp_auto", False) and not rig_coarse:
+                    # 自動のときは切った結果を見て閾値を詰める。
+                    # 分布から系統を当てる方式だけでは、実測で 39モデル中
+                    # 9モデルが網目状に砕けていた
+                    max_ratio = mesh_islands.MAX_ISLANDS_PER_FACE
+                    # 手描き背景の1回目(メカの塗り = 細い線用)は抑えない。
+                    # 抑えるのは手描きの塗りの役目で、メカの塗りは線を全部
+                    # 出す。上限 0.08 島/面 は箱を結合した低ポリの建物で
+                    # 「切れすぎ」と誤判定し、179度まで上げて角の線を消した
+                    # (町の家: 137面に箱23個、上限10島)
+                    if scene.get("fp_fine_pass"):
+                        max_ratio = 1.0
+                    used_deg, tries, ratio = mesh_islands.resolve_threshold(
+                        topo, math.degrees(effective_threshold_rad),
+                        seam_boundaries_option, clear_sharps_option,
+                        max_ratio=max_ratio,
+                        max_deg=float(scene.get("fp_raise_cap", 179.0)))
+                    if tries > 1:
+                        print(f"[FreePencil] '{obj.name}': island ratio too "
+                              f"high, raised to {used_deg:.1f} deg "
+                              f"({tries} tries, {ratio:.4f} islands/face)")
+                    effective_threshold_rad = math.radians(used_deg)
 
+                    # 上げるだけでは、多数派の角度に隠れた少数派を拾えない。
+                    # 実測(sample2の面取りした箱、10面): 二面角は
+                    # 90度x8 / 79度x4 / 64度x4 / 25.6度x4 で、p95 が 90度に
+                    # なるため 60度が選ばれ、緩い斜面の 25.6度 が消えていた。
+                    # 下げても島が増えすぎないなら下げる
+                    #
+                    # リグ付きと多パーツ組立は対象外。どちらも「人工分割を
+                    # しない」ことが既存の設計で、線の主役はボーン境界と
+                    # パーツ間のシルエットにある。ここを下げると、そのために
+                    # 置いたガードを素通しして細片が出る(t20/t24/t25 が落ちた)
+                    if not has_arm and not many_loose_parts:
+                        n_parts = utils.count_loose_parts(obj.data)
+                        low_deg, low_n = mesh_islands.lower_threshold_for_detail(
+                            topo, n_parts, seam_boundaries_option,
+                            clear_sharps_option)
+                        if low_deg is not None and low_deg < used_deg - 0.5:
+                            print(f"[FreePencil] '{obj.name}': lowered "
+                                  f"{used_deg:.1f} -> {low_deg:.1f} deg "
+                                  f"({low_n} islands / {n_parts} parts)")
+                            used_deg = low_deg
+                            effective_threshold_rad = math.radians(used_deg)
+                        topo.mark_boundaries(effective_threshold_rad,
+                                             seam_boundaries_option,
+                                             clear_sharps_option)
+                        topo.build_islands()
+                elif rig_coarse:
+                    # ざっくり塗り: つながったパーツ x マテリアルごとに1色。
+                    # ただし小さいパーツ(面積が全体の COARSE_SMALL_PART 未満)は
+                    # マテリアルごとに1つへまとめる。髪はカードが数百枚の別
+                    # パーツで、1枚ずつ色が変わると線だらけになった(anime-girl
+                    # の髪 568島)。マテリアル単位にまとめ切ると、服が1マテリアル
+                    # のモデルでスカートとブラウスの境目まで消えた
+                    topo.mark_boundaries(math.pi, False, True)
+                    sel = topo.two_face
+                    topo.is_boundary[sel] |= (topo.material[topo.face_a[sel]]
+                                              != topo.material[topo.face_b[sel]])
+                    topo.build_islands()
+                    area = np.asarray(topo.area, dtype=np.float64)
+                    total = max(float(area.sum()), 1e-12)
+                    mats = np.asarray(topo.material)
+                    keep, small = [], {}
+                    for isl in topo.islands:
+                        if area[isl].sum() / total >= COARSE_SMALL_PART:
+                            keep.append(isl)
+                        else:
+                            small.setdefault(int(mats[isl[0]]), []).append(isl)
+                    keep += [np.concatenate(v).astype(np.int32)
+                             for v in small.values()]
+                    topo.set_islands(keep)
+                    print(f"[FreePencil] '{obj.name}': キャラ(リグ付き)は"
+                          f"ざっくり塗り {len(topo.islands)}島")
+                else:
+                    topo.mark_boundaries(effective_threshold_rad,
+                                         seam_boundaries_option,
+                                         clear_sharps_option)
+                    topo.build_islands()
 
                 # --- 2. 島の検出 ---
                 # 以降のフェーズは単一の高密度メッシュだと各数秒〜十数秒
@@ -446,8 +701,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 if fine_progress:
                     yield i + 0.15, n_objs, f"{obj.name} - " + \
                         bpy.app.translations.pgettext("Detecting islands")
-                topo.build_islands()
-                islands = topo.islands
+                islands = topo.islands   # 上で切り終えている
 
                 # --- 2.5 微小島のマージ ---
                 # 面積がメッシュ全体の一定割合未満の島は線として視認できず、
@@ -463,6 +717,44 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     mesh_islands.merge_small_islands(topo, min_island_area_pct)
                     islands = topo.islands
 
+                # --- 2.7 葉を房にまとめる(手描き背景モードだけ) ---
+                # 既定 0 = この分岐を通らない。精密・キャラの経路は不変
+                k_clumps = int(getattr(scene, "fp_foliage_clumps", 0))
+                if k_clumps > 0 and len(islands) > 1 and not rig_coarse:
+                    n_before = len(islands)
+                    n_clumps = mesh_islands.clump_small_islands(
+                        topo, k_clumps, master_operation_seed_int)
+                    if n_clumps:
+                        islands = topo.islands
+                        print(f"[FreePencil] '{obj.name}': 葉を房に "
+                              f"{n_before}島 -> {len(islands)}島(房{n_clumps})")
+
+                # --- 2.8 遠い区画をまとめる(手描き背景、v2.8.3) ---
+                # 房の後に置く: 手前の木の房は崩さず、遠い木の房だけをまとめる。
+                # 同じメッシュを使う物(並木など)は、カメラに近い数本で測り、
+                # 一番大きく写る値を使う(手前の物を粗くしない)
+                if far_cams is not None and len(islands) > 1 and not rig_coarse:
+                    users = [o for o in context.scene.objects
+                             if o.type == 'MESH' and o.data == obj.data
+                             and not o.hide_render] or [obj]
+                    cams_np = np.asarray(far_cams[0], dtype=np.float64)
+
+                    def _near(o):
+                        c = np.asarray(o.matrix_world.translation, dtype=np.float64)
+                        return float(np.min(np.linalg.norm(cams_np - c, axis=1)))
+                    users.sort(key=_near)
+                    mats = [np.asarray(o.matrix_world, dtype=np.float64)
+                            for o in users[:mesh_islands.FAR_LOD_INSTANCES]]
+                    face_px = mesh_islands.face_screen_area(
+                        topo, obj.data, mats, far_cams[0], far_cams[1])
+                    n_before = len(islands)
+                    n_far = mesh_islands.merge_far_islands(
+                        topo, face_px, far_lod_px, matrix=mats[0])
+                    if n_far:
+                        islands = topo.islands
+                        print(f"[FreePencil] '{obj.name}': 遠い区画をまとめる "
+                              f"{n_before}島 -> {len(islands)}島")
+
                 # --- 3. 島の隣接グラフ彩色 + パレット配色 ---
                 # 乱数リトライで隣接色距離を満たそうとする方式をやめ、
                 # 隣接グラフをグリーディ彩色して「相互距離を最大化した
@@ -476,6 +768,12 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # 「隣接なし」と判定されて同じ色クラスになり境界線が消える。
                 # だから隣接も島境界エッジ越しだけを見る
                 island_neighbors = topo.island_adjacency(boundary_only=True)
+                # 辺で繋がっていない島(別のルースパーツ)は上の判定では
+                # 「隣接なし」になり、貪欲彩色が全部を同じクラスに置く。
+                # 画面では重なっているのに境界の色差がゼロになるので、
+                # 近接しているルースパーツ同士を隣として足す
+                n_prox = mesh_islands.add_loose_part_proximity(
+                    topo, obj.data, island_neighbors)
                 island_classes = utils.color_graph_greedy(island_neighbors)
                 n_classes = (max(island_classes) + 1) if island_classes else 1
                 # パーツ・トーン分け: 明度「窓」をパーツごとにずらして
@@ -486,9 +784,25 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # (utils.part_luma_window に理由と実測値)。
                 obj_part_class = part_tint.get(obj.name, 0)
                 luma_lo, luma_hi = utils.part_luma_window(obj_part_class)
-                palette, palette_min_dist, palette_min_luma = utils.build_palette(
-                    n_classes, master_operation_seed_int,
-                    luma_lo=luma_lo, luma_hi=luma_hi)
+                # 彩色数ぶんしか色を作らないと、島同士がメッシュで繋がって
+                # いない形(文字など)で色が足りない。実測: "Text" は124島でも
+                # 彩色数2、自動しきい値だと1で、全部が同じ黄色になっていた。
+                # 契約(距離・輝度差)を守れる範囲で色数を増やす
+                palette, palette_min_dist, palette_min_luma = \
+                    utils.palette_for_diversity(
+                        min_neighbor_color_distance,
+                        min(len(islands), PALETTE_SIZE),
+                        master_operation_seed_int, min_k=n_classes,
+                        luma_lo=luma_lo, luma_hi=luma_hi)
+                # 従来の割り当てを出発点に、制約を壊さない範囲でだけ散らす
+                island_classes, n_used = utils.diversify_island_colors(
+                    island_neighbors, island_classes, palette,
+                    min_neighbor_color_distance)
+                if len(palette) > n_classes or n_prox:
+                    print(f"[FreePencil] '{obj.name}': 島{len(islands)} "
+                          f"近接隣接{n_prox} "
+                          f"彩色数{n_classes} -> パレット{len(palette)} "
+                          f"使った色{n_used}")
 
                 # 隣接距離と輝度差(=線の検出性)の保証を壊さない範囲で
                 # 島ごとに色を揺らす
@@ -540,10 +854,25 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                 # topo は普通の numpy 配列なので GC に任せる
                 pass
 
+            # 稜線の起伏。島は面の縁でしか色を変えられないので、なめらかな
+            # 出っ張り(まぶたの上など)に線が出せない。法線から「大きな向き」
+            # を引いた残りを島の中に薄く足して、そこだけ色を動かす。
+            # 平らな面では残差がほぼゼロなので、メカには何も足されない
+            ridge_offset = None
+            if ridge_amount > 0.0 and not rig_coarse:
+                got = mesh_islands.ridge_residual(obj.data, ridge_radius)
+                if got is not None:
+                    d, n_iter = got
+                    ridge_offset = d * ridge_amount
+                    print(f"[FreePencil] '{obj.name}': 稜線の起伏 "
+                          f"{ridge_amount:.2f} 距離{ridge_radius:.3f} "
+                          f"(均し{n_iter}回) 最大ズレ"
+                          f"{float(np.abs(ridge_offset).max()):.3f}")
+
             if obj.mode != 'OBJECT': bpy.ops.object.mode_set(mode='OBJECT')
             yield i + 0.85, n_objs, f"{obj.name} - " + \
                 bpy.app.translations.pgettext("Writing vertex colors")
-            utils.apply_face_colors(obj, mecha_color_index, final_face_colors_r, final_face_colors_g, final_face_colors_b)
+            utils.apply_face_colors(obj, mecha_color_index, final_face_colors_r, final_face_colors_g, final_face_colors_b, ridge_offset)
 
             # --- Bone color generation ---
             armature_mod = next((m for m in obj.modifiers
@@ -602,6 +931,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                               if s.strip()}
 
                 vertex_colors = [(1.0, 1.0, 1.0)] * len(verts)
+                hard_mask = np.zeros(len(verts), dtype=bool)
                 for v in verts:
                     accum = [0.0, 0.0, 0.0]
                     total = 0.0
@@ -621,6 +951,7 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                                     and group_base_name[g.group].lower() in hard_names):
                                 hard_touch = True
                     if hard_touch and best_g is not None:
+                        hard_mask[v.index] = True
                         c = group_colors[best_g]
                         c = [min(1.0, c[0] + 0.1), min(1.0, c[1] + 0.1),
                              min(1.0, c[2] + 0.1)]
@@ -631,6 +962,28 @@ class LINK_MAKE_OT_FP(FPProgressModalMixin, bpy.types.Operator):
                     else:
                         c = [1.0, 1.0, 1.0]
                     vertex_colors[v.index] = tuple(c)
+                # キャラ(ざっくり塗り)ではボーンの境目をさらにぼかす。粗いケージで
+                # ウェイトが1辺で切り替わると(デッサン人形の胸: spine_02 -> 03)、
+                # サブディビジョンがその段差を数px の帯に広げ、線にも無地にも
+                # ならない灰色の塊になった。隣の頂点と平均を数回とる。密な
+                # メッシュでは広がりがごく小さいので、ほぼ変わらない
+                n_smooth = int(scene.get("fp_bone_smooth", BONE_SMOOTH_ITERS))
+                if rig_coarse and n_smooth > 0 and len(verts) > 1:
+                    ev = np.empty(len(obj.data.edges) * 2, dtype=np.int32)
+                    obj.data.edges.foreach_get("vertices", ev)
+                    ev = ev.reshape(-1, 2)
+                    cols = np.asarray(vertex_colors, dtype=np.float64)
+                    hard_cols = cols[hard_mask].copy()
+                    deg = np.bincount(ev.ravel(), minlength=len(verts)).astype(np.float64)
+                    for _ in range(n_smooth):
+                        acc = cols.copy()
+                        np.add.at(acc, ev[:, 0], cols[ev[:, 1]])
+                        np.add.at(acc, ev[:, 1], cols[ev[:, 0]])
+                        cols = acc / (deg + 1.0)[:, None]
+                        # 硬境界ボーンの頂点はぼかさない(わざと段差を残した所)。
+                        # ぼかしていたので、キャラ/手描き背景では硬境界が効かなかった
+                        cols[hard_mask] = hard_cols
+                    vertex_colors = [tuple(c) for c in cols.tolist()]
             else:
                 vertex_colors = [(1.0, 1.0, 1.0)] * len(verts)
 

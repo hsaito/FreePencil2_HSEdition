@@ -9,11 +9,15 @@ the operators.
 import bpy
 
 from . import compat
+from . import line_weight
 from . import node_layout
+from . import render_size
 from . import utils_nodegroup
 from .utils_nodes import insert_antialiasing_if_needed
 
 AOV_GROUP_NAME = "FreePencil_aov_Group_v1_1_0"
+# 細い線(精密の分割)の AOV を材質へ足すときの目印
+FINE_AOV_LABEL = "FreePencil_fine_aov"
 NODE_GROUP_PREFIX = "FreePencil_v1_1_0_"
 
 # ファイル出力で書き出せるパス。スロット名がそのままファイル名になる。
@@ -27,7 +31,10 @@ NODE_GROUP_PREFIX = "FreePencil_v1_1_0_"
 # 代わりにディフューズの直接光を既定 ON にしている。
 FILE_OUTPUT_PASSES = (
     ("fp_fo_line", "line", ("group", "line")),
-    ("fp_fo_color", "color", ("group", "color")),
+    # 色はレンダーそのもの(材質の色)から取る。グループの color 出力は
+    # Image 入力の素通しで、白/モノクロのプレビュー中はそれが白や灰色に
+    # なり、color.png が真っ白で書き出されていた(v2.7 から。v2.8.1 の点検で発見)
+    ("fp_fo_color", "color", ("pass", None, ("Image",))),
     ("fp_fo_light", "light",
      ("pass", "use_pass_diffuse_direct", compat.DIFFUSE_DIRECT_SOCKETS)),
     ("fp_fo_shadow", "shadow", ("pass", "use_pass_shadow", ("Shadow",))),
@@ -308,6 +315,109 @@ WHITE_MIX_LABEL = "FP_WhitePreviewMix"
 _LEGACY_SHADER_MIX_GROUP = "FreePencil_WhitePreview_Mix"
 
 
+MONO_LABEL = "FP_MonoLightPreview"
+
+
+def set_mono_light_preview(scene: bpy.types.Scene, enable: bool,
+                           floor: float = 0.25) -> int:
+    """モノクロ(ディフューズライト)プレビューの ON/OFF。
+
+    白プレビューと同じ考え方で、PROノードの Image 入力に何を流すかだけ
+    変える。白一色ではなく「ディフューズ直接光をグレースケール化した
+    もの」を流すので、線はそのまま、面には陰影が乗る。
+
+    ビューティ(Combined)ではなくディフューズ直接光を使うのは、
+    テクスチャの模様を持ち込まずに陰影だけを取りたいから。
+
+    floor は影の下限。0 にすると暗部が黒く潰れて線が見えなくなる。
+
+    白プレビューと同時には成立しないので、こちらを立てるときは
+    呼び出し側が白を下ろす(props の更新フックがやる)。
+    """
+    tree = compat.get_compositor_tree(scene)
+    if tree is None:
+        return 0
+
+    made = [n for n in tree.nodes if n.label == MONO_LABEL]
+    grp = next((n for n in tree.nodes
+                if n.type == 'GROUP' and n.node_tree
+                and n.node_tree.name.startswith(NODE_GROUP_PREFIX)), None)
+    if grp is None:
+        return 0
+    img_in = grp.inputs.get("Image")
+    if img_in is None:
+        return 0
+
+    if not enable:
+        # 立てる前に Image へ入っていた所(白プレビューの Mix か RenderLayers
+        # の Image)へ戻してから撤去する。以前は撤去するノードの入力元を
+        # 戻していて、それはディフューズ直接光のパスだった。モノクロ ->
+        # マテリアルで陰影が残り、そのあと白を選んでも白にならなかった
+        # (白の Mix が外れたまま。GUI で確認)
+        src = None
+        for n in made:
+            node = tree.nodes.get(n.get("fp_prev_node", ""))
+            idx = int(n.get("fp_prev_out", 0))
+            if node is not None and idx < len(node.outputs):
+                src = node.outputs[idx]
+                break
+        if src is None:
+            mix = next((n for n in tree.nodes if n.label == WHITE_MIX_LABEL), None)
+            rl = next((n for n in tree.nodes if n.type == 'R_LAYERS'), None)
+            src = (mix.outputs[0] if mix is not None
+                   else rl.outputs.get("Image") if rl is not None else None)
+        for n in made:
+            tree.nodes.remove(n)
+        if src is not None and not img_in.is_linked:
+            tree.links.new(src, img_in)
+        return 0
+
+    rl = next((n for n in tree.nodes if n.type == 'R_LAYERS'), None)
+    if rl is None:
+        return 0
+    light = compat.render_layer_socket(rl, compat.DIFFUSE_DIRECT_SOCKETS)
+    if light is None:
+        return 0
+
+    # 立てる前の Image の入力元を覚えておく(下ろすときに戻す)。押し直しでは
+    # 自分のノードが入っているので、前回覚えた値を引き継ぐ
+    prev = next(((n["fp_prev_node"], n.get("fp_prev_out", 0))
+                 for n in made if n.get("fp_prev_node")), None)
+    if prev is None and img_in.is_linked:
+        lk = img_in.links[0]
+        if lk.from_node.label != MONO_LABEL:
+            prev = (lk.from_node.name,
+                    list(lk.from_node.outputs).index(lk.from_socket))
+    for n in made:                      # 何度押しても増やさない
+        tree.nodes.remove(n)
+
+    x, y = grp.location.x - 320, grp.location.y + 220
+
+    bw = compat.new_node(tree, "CompositorNodeRGBToBW")
+    bw.label = MONO_LABEL
+    if prev is not None:
+        bw["fp_prev_node"], bw["fp_prev_out"] = prev[0], int(prev[1])
+    bw.location = (x, y)
+    bw.hide = True
+    tree.links.new(light, bw.inputs[0])
+
+    lift = compat.new_node(tree, "CompositorNodeMapRange")
+    lift.label = MONO_LABEL
+    lift.location = (x + 150, y)
+    lift.hide = True
+    # クランプ: 4.x の Compositor は use_clamp、5.x の Shader 版は clamp
+    compat.set_node_value(lift, "use_clamp" if hasattr(lift, "use_clamp")
+                          else "clamp", True)
+    for name, val in (("From Min", 0.0), ("From Max", 1.0),
+                      ("To Min", max(0.0, min(0.9, floor))), ("To Max", 1.0)):
+        sock = lift.inputs.get(name)
+        if sock is not None:
+            sock.default_value = val
+    tree.links.new(bw.outputs[0], lift.inputs[0])
+    tree.links.new(lift.outputs[0], img_in)
+    return 2
+
+
 def set_white_preview(scene: bpy.types.Scene, enable: bool,
                       keep_glass: bool = True) -> int:
     """白プレビューの ON/OFF(コンポジタ切替方式・最終形)。
@@ -437,6 +547,52 @@ def set_white_preview(scene: bpy.types.Scene, enable: bool,
     return count
 
 
+def passthrough_aov_color(group: bpy.types.NodeTree) -> int:
+    """mecha_color に頂点カラーをそのまま届ける。
+
+    ノードグループの中で、塗り分けの色は AOV に出る前に2段の Mix を通る。
+
+      頂点カラー(mecha_color)
+        -> Mix.002 : mix(頂点カラー, line_texture, 0.5)
+        -> Mix.005 : mix(上, 色相180度+彩度2倍+明度2倍+20%反転, Generated.X)
+        -> AOV mecha_color
+
+    どちらも塗り分けを壊していた(実測)。
+
+    - line_texture は未接続だと (0,0,0,1) の黒。Mix.002 は blend が MIX で
+      Factor が 0.5 固定なので、結果は「頂点カラーの半分」にしかならない。
+    - Mix.005 の Factor は Generated 座標の X。オブジェクトのどこにあるかで
+      変換の量が変わるため、島ごとに色を変えても位置によって寄ってしまう。
+
+    実測(ロゴ): 頂点カラーに対する AOV の比が場所ごとに 0.54〜1.99 とばらつき、
+    単なる減衰ですらなかった。fp_min_neighbor_color_distance は頂点カラーに
+    対して保証している(ロゴの隣接397組で最小0.714・違反0)のに、線を検出する
+    側にはその色が届いていなかった。
+
+    そこで両方の Factor を 0 にして A(=頂点カラー)を素通しにする。
+    line_texture を使いたいときは Mix.002 の Factor を上げれば従来どおり
+    効く。配線は残してあるので戻せる。
+
+    mask_texture 側(Mix.004)は blend が ADD で、黒を足しても値が変わらない
+    ため触らない。
+
+    戻り値は直したノード数。
+    """
+    fixed = 0
+    for name in ("Mix.002", "Mix.005"):
+        nd = group.nodes.get(name)
+        if nd is None or nd.type != "MIX":
+            continue
+        fac = nd.inputs[0]
+        for link in list(fac.links):
+            group.links.remove(link)
+            fixed += 1
+        if fac.default_value != 0.0:
+            fac.default_value = 0.0
+            fixed += 1
+    return fixed
+
+
 def setup_aov(scene: bpy.types.Scene,
               view_layer: bpy.types.ViewLayer) -> dict:
     """STEP2 core: insert the AOV node group into every material and
@@ -448,6 +604,9 @@ def setup_aov(scene: bpy.types.Scene,
     # 「無ければ作る」だと古いグループが残っている .blend で永久に
     # 更新されない。版が古ければ作り直して参照を付け替える
     aov_group = utils_nodegroup.ensure_node_group_updated(AOV_GROUP_NAME)
+    # 版が同じで作り直されなかった("kept")場合も直す必要があるので、
+    # ensure の結果に関わらず毎回通す
+    passthrough_aov_color(aov_group)
     result = {"group": aov_group.name,
               "action": aov_group.get("fp_last_action", "created"),
               "materials": 0, "aovs": []}
@@ -473,6 +632,21 @@ def setup_aov(scene: bpy.types.Scene,
                and "FreePencil" in nd.node_tree.name \
                and nd.node_tree.name != AOV_GROUP_NAME:
                 nodes.remove(nd)
+
+        # 細い線の AOV。外部リソースのグループは触らず、材質に
+        # 「色属性 -> AOV 出力」の2ノードだけ足す(既定OFFでは何も足さない)
+        for nd in [n for n in nodes if n.label == FINE_AOV_LABEL]:
+            nodes.remove(nd)
+        if getattr(scene, "fp_fine_lines", 0.0) > 0.0:
+            attr = nodes.new("ShaderNodeVertexColor")
+            attr.label = FINE_AOV_LABEL
+            attr.layer_name = "fine_color"
+            attr.location = (10, 680)
+            aov_out = nodes.new("ShaderNodeOutputAOV")
+            aov_out.label = FINE_AOV_LABEL
+            aov_out.aov_name = "fine_color"
+            aov_out.location = (240, 680)
+            nt.links.new(attr.outputs["Color"], aov_out.inputs["Color"])
 
         if not any(nd.type == "GROUP" and nd.node_tree
                    and nd.node_tree.name == AOV_GROUP_NAME
@@ -502,10 +676,88 @@ def setup_aov(scene: bpy.types.Scene,
     ensure_aov("line_color", scene.fp_line_color)
     ensure_aov("mat_color", scene.fp_mat_color)
     ensure_aov("bone_color", scene.fp_bone_color)
+    ensure_aov("fine_color", getattr(scene, "fp_fine_lines", 0.0) > 0.0)
 
     scene.render.film_transparent = True
     scene.view_settings.view_transform = 'Standard'
     return result
+
+
+def _apply_fine_lines(tree, scene, rl, group_node, comp):
+    """fine_color から細い線を作り、最終画像へ薄く乗算する。戻り値はノード数。"""
+    label = "FreePencil_fine_line"
+    for n in [n for n in tree.nodes if n.label == label]:
+        if n.type == "GROUP" and n.node_tree and n.node_tree.users == 1:
+            bpy.data.node_groups.remove(n.node_tree)
+        tree.nodes.remove(n)
+    k = float(getattr(scene, "fp_fine_lines", 0.0))
+    src = next((o for o in rl.outputs if o.name == "fine_color"), None)
+    if k <= 0.0 or src is None or group_node.node_tree is None:
+        return 0
+    # 細い線はプロノードの "sample" 出力を使う。テストノード(出力は Image
+    # だけ)を選ぶと、手描き背景では STEP3 が KeyError で止まっていた(総当りで発見)
+    if "sample" not in group_node.outputs:
+        return 0
+    if not comp.inputs or not comp.inputs[0].is_linked:
+        return 0
+    made = []
+
+    fine = tree.nodes.new("CompositorNodeGroup")
+    fine.node_tree = group_node.node_tree.copy()
+    fine.node_tree.name = group_node.node_tree.name + "_fine"
+    fine.label = label
+    fine.location = (group_node.location.x, group_node.location.y - 700)
+    made.append(fine)
+    # 塗り分けの口だけ差し替える。他のチャンネル(深度・ボーン・生成・材質)は
+    # つながないので線を出さない = 細い分割の線だけが出る
+    if "mecha_color" in fine.inputs:
+        tree.links.new(src, fine.inputs["mecha_color"])
+    dst_a = group_node.inputs.get("Alpha")
+    if dst_a is not None and dst_a.is_linked and "Alpha" in fine.inputs:
+        tree.links.new(dst_a.links[0].from_socket, fine.inputs["Alpha"])
+    # 奥の扱い(深度)を細い線にも効かせる。コピーしたグループには奥ほど
+    # 線を減らす枝が入っているが、深度がつながっておらず効いていなかった
+    # (水平線の試験場で、奥の縞がこちらから出続けた)
+    dst_d = group_node.inputs.get("Depth")
+    if dst_d is not None and dst_d.is_linked and "Depth" in fine.inputs:
+        tree.links.new(dst_d.links[0].from_socket, fine.inputs["Depth"])
+    # 絵の入口は白に固定する。"line" 出力はほぼ空で(実測: 最大 0.004)、
+    # 線は "sample"(絵の上に線を乗せた合成)に出る。ビューティを入れると
+    # 陰影まで一緒に乗算されて面が灰色になるので、白を入れて線だけ取る
+    white = tree.nodes.new("CompositorNodeRGB")
+    white.label = label
+    white.hide = True
+    white.location = (fine.location.x - 200, fine.location.y)
+    white.outputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
+    made.append(white)
+    if "Image" in fine.inputs:
+        tree.links.new(white.outputs[0], fine.inputs["Image"])
+
+    # 薄さ: faint = 1 - k * 線。乗算で最終画像へ
+    inv = compat.new_node(tree, "CompositorNodeMixRGB")
+    compat.set_node_value(inv, "blend_type", "MIX")
+    inv.label = label
+    inv.hide = True
+    inv.location = (fine.location.x + 320, fine.location.y)
+    inv.inputs[0].default_value = k
+    inv.inputs[1].default_value = (1.0, 1.0, 1.0, 1.0)
+    tree.links.new(fine.outputs["sample"], inv.inputs[2])
+    made.append(inv)
+
+    mul = compat.new_node(tree, "CompositorNodeMixRGB")
+    compat.set_node_value(mul, "blend_type", "MULTIPLY")
+    mul.label = label
+    mul.hide = True
+    mul.location = (comp.location.x - 160, comp.location.y - 160)
+    mul.inputs[0].default_value = 1.0
+    made.append(mul)
+    lnk = comp.inputs[0].links[0]
+    prev = lnk.from_socket
+    tree.links.remove(lnk)
+    tree.links.new(prev, mul.inputs[1])
+    tree.links.new(inv.outputs[0], mul.inputs[2])
+    tree.links.new(mul.outputs[0], comp.inputs[0])
+    return len(made)
 
 
 def setup_compositor(scene: bpy.types.Scene,
@@ -519,9 +771,10 @@ def setup_compositor(scene: bpy.types.Scene,
 
     utils_nodegroup.ensure_node_group_updated(node_ver_name)
 
-    # 線感度(既定1.0=従来挙動)。冪等なので毎回適用してよい
+    # 線感度(既定1.0=従来挙動)。冪等なので毎回適用してよい。
+    # 強弱がONのときは、線を弱め(=減らす)に倒した値になる
     apply_line_tuning(bpy.data.node_groups[node_ver_name],
-                      getattr(scene, "fp_line_sensitivity", 1.0),
+                      line_weight.effective_sensitivity(scene),
                       channel_strengths_from_scene(scene))
     # 遠景つぶれ軽減(既定0.0=何も挿さない)。これも冪等
     far_relief_from_scene(bpy.data.node_groups[node_ver_name], scene)
@@ -543,7 +796,7 @@ def setup_compositor(scene: bpy.types.Scene,
     # 後から有効化するとソケットがまだ生えていない
     if getattr(scene, "fp_file_output", False):
         for _prop, _slot, source in selected_file_output_passes(scene):
-            if source[0] == "pass":
+            if source[0] == "pass" and source[1] is not None:
                 setattr(view_layer, source[1], True)
 
     rl = tree.nodes.new("CompositorNodeRLayers")
@@ -569,6 +822,10 @@ def setup_compositor(scene: bpy.types.Scene,
         if output_sock is not None:
             tree.links.new(output_sock, input_sock)
 
+    # 葉の隙間埋め(手描き背景)。既定 0 で何も挿さない
+    from . import gap_fill
+    gap_fill.apply(tree, scene, rl, group_node)
+
     if group_node.outputs:
         insert_antialiasing_if_needed(
             tree,
@@ -583,6 +840,8 @@ def setup_compositor(scene: bpy.types.Scene,
     # アルファは不透明のままなので背景が塗り潰される（4.5のComposite
     # ノードに Alpha 入力は無い）。Set Alpha ノードでレンダーレイヤーの
     # シルエットアルファを書き戻し、透過背景の線画として出力する。
+    # 強弱を挟む先。Set Alpha があればその画像入力、無ければ合成の入力
+    weight_target = comp.inputs[0]
     alpha_out = rl_outputs.get("Alpha")
     if group_node.outputs and alpha_out is not None:
         set_alpha = tree.nodes.new("CompositorNodeSetAlpha")
@@ -596,6 +855,17 @@ def setup_compositor(scene: bpy.types.Scene,
         tree.links.new(alpha_out, set_alpha.inputs["Alpha"])
         tree.links.new(set_alpha.outputs[0], comp.inputs[0])
         comp.location = (860, 600)
+        weight_target = set_alpha.inputs["Image"]
+
+    # 線の強弱(入り抜き)。くぼみが深いほど太くする。既定はOFF。
+    # 50%縮小(スーパーサンプリング)より前に挟む。縮小が最後でないと
+    # 太らせた幅と出力の画素数が合わなくなる
+    line_weight.apply(scene, view_layer, tree, weight_target)
+
+    # 細い線(精密の分割)を薄く重ねる。同じ検出の仕組みをもう一度通すため、
+    # ノードグループをコピーして fine_color を mecha_color の口へ入れ、出て
+    # きた線を強弱の後ろで乗算する(強弱は太い線だけに掛けたいので後ろ)
+    _apply_fine_lines(tree, scene, rl, group_node, comp)
 
     # ファイル出力: チェックの入ったパスを個別PNGで書き出す
     selected = selected_file_output_passes(scene)
@@ -613,6 +883,8 @@ def setup_compositor(scene: bpy.types.Scene,
             if source[0] == "group":
                 src = next((o for o in group_node.outputs
                             if o.name == source[1]), None)
+            elif source[1] is None:          # 常にあるパス(Image)
+                src = compat.render_layer_socket(rl, source[2])
             else:
                 # パスは有効化した直後だと RenderLayers にソケットが
                 # 無いことがあるため、有効化後のノードから引き直す
@@ -647,7 +919,14 @@ def setup_compositor(scene: bpy.types.Scene,
             tree.links.new(src, sc.inputs[0])
             tree.links.new(sc.outputs[0], to_socket)
 
+        # Composite に入る1本だけ目印を付ける。F12 のときはこれを外して
+        # 等倍で出す(render_size)。ファイル出力側は 0.5 のままにしないと
+        # STEP5 が2倍で出る(テスト t39)
+        before = {n.name for n in tree.nodes if n.type == 'SCALE'}
         _insert_half_scale(comp.inputs[0])
+        for node in tree.nodes:
+            if node.type == 'SCALE' and node.name not in before:
+                render_size.mark_composite_scale(node)
         for node in tree.nodes:
             if node.type == 'OUTPUT_FILE':
                 for sock in node.inputs:
@@ -655,9 +934,16 @@ def setup_compositor(scene: bpy.types.Scene,
     else:
         scene.render.resolution_percentage = 100
 
-    # 白プレビュー中に STEP3 を再生成した場合は Mix(白) を挿入し直す
-    if getattr(scene, "fp_white_preview", False):
+    # プレビュー中に STEP3 を再生成した場合は掛け直す。白だけ戻していて、
+    # モノクロは外れたまま(表示はモノクロなのに材質の色で出た)だった
+    # 見るのはプレビューの種類だけ。旧トグル(fp_white_preview)は種類を
+    # 切り替えても残っていて、それを見て白を掛け直していた(v2.8.0)
+    mode = getattr(scene, "fp_preview_mode", "NONE")
+    if mode == "WHITE":
         set_white_preview(scene, True)
+    elif mode == "MONO_LIGHT":
+        set_mono_light_preview(scene, True,
+                               floor=getattr(scene, "fp_mono_floor", 0.25))
 
     # 最後に配置を整える。座標はエクスポート元 .blend の手配置がそのまま
     # 入っており、読めない状態だった(PROノード80個で重なり97組)。

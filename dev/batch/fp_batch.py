@@ -92,6 +92,16 @@ def install_addon() -> None:
             staging.symlink_to(REPO, target_is_directory=True)
         except (OSError, NotImplementedError):
             # fallback: one-shot copy (kept for exotic setups)
+            #
+            # 壊れたジャンクション(リンク先が消えた worktree など)が残って
+            # いると、Path.mkdir(exist_ok=True) は is_dir() が偽になるため
+            # FileExistsError を投げる。実際、別 worktree で検証したあと
+            # 本体リポジトリに戻すときに落ちた。先に必ず消す。
+            if staging.exists() or staging.is_symlink():
+                try:
+                    os.rmdir(staging)
+                except OSError:
+                    shutil.rmtree(staging, ignore_errors=True)
             staging.mkdir(parents=True, exist_ok=True)
             for item in REPO.iterdir():
                 if item.name in EXCLUDE_DIRS:
@@ -564,6 +574,14 @@ def encode_video(frame_paths: list[Path], out_mp4: Path,
     """
     sc = bpy.data.scenes.new("FP_Encode")
     try:
+        # 新規シーンのビュー変換は Blender 既定 = AgX。入力の PNG は
+        # すでに sRGB の表示用画像なので、そのまま出すとトーンマップが
+        # 二重に掛かって全体がくすむ(実測: 4.5 の新規シーンは AgX)。
+        # 素通しにする
+        sc.view_settings.view_transform = 'Standard'
+        sc.view_settings.look = 'None'
+        sc.view_settings.exposure = 0.0
+        sc.view_settings.gamma = 1.0
         sc.render.resolution_x = width
         sc.render.resolution_y = height
         sc.render.resolution_percentage = 100

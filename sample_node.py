@@ -24,6 +24,8 @@ class LINK_MAKE_FP_OT_NODE(bpy.types.Operator):
 
     def execute(self, context):
         """Build a compositor setup with the selected node group."""
+        from . import undo_setup          # 「FreePencil を外す」ための元の値を控える
+        undo_setup.snapshot(context)
         def show_message(message="", title="Message Box", icon='INFO'):
             if bpy.app.background:
                 print(f"[freepencil2] {message}")
