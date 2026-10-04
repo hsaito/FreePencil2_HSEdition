@@ -18,6 +18,8 @@ class LINK_MAKE_FP_OT_AOV_NODE(bpy.types.Operator):
 
     def execute(self, context):
         """Generate and insert the FreePencil AOV node group."""
+        from . import undo_setup          # 「FreePencil を外す」ための元の値を控える
+        undo_setup.snapshot(context)
         def show_msg(msg, title="Message", icon='INFO'):
             if bpy.app.background:
                 print(f"[freepencil4] {msg}")

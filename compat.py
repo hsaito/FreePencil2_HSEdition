@@ -36,6 +36,9 @@ _NODE_TYPE_5X = {
     "CompositorNodeValToRGB": "ShaderNodeValToRGB",
     "CompositorNodeMixRGB": "ShaderNodeMixRGB",
     "CompositorNodeMath": "ShaderNodeMath",
+    # 5.x のコンポジタに Map Range は無く、シェーダー側を使う(実測 5.2)。
+    # クランプはプロパティ名が use_clamp -> clamp に変わる
+    "CompositorNodeMapRange": "ShaderNodeMapRange",
     # Composite は「グループ出力」に置き換わる。ソケット構成が異なるため
     # 呼び出し側で扱いを分ける必要がある(new_output_node を使うこと)
     "CompositorNodeComposite": "NodeGroupOutput",
@@ -47,6 +50,10 @@ OUTPUT_NODE_TYPES = ("COMPOSITE", "GROUP_OUTPUT")
 # Render Layers のディフューズ直接光パスのソケット名。
 # 4.x は 'DiffDir'、5.x で 'Diffuse Direct' に変わった(実測)。
 DIFFUSE_DIRECT_SOCKETS = ("Diffuse Direct", "DiffDir")
+
+# アンビエントオクルージョンのソケット名。4.x は 'AO'、
+# 5.x で 'Ambient Occlusion' に変わった(実測)
+AO_SOCKETS = ("Ambient Occlusion", "AO")
 
 
 def render_layer_socket(rl_node, names):
@@ -181,6 +188,13 @@ def filter_factor_input(node):
             or node.inputs[0])
 
 
+# 4.x のプロパティ名 -> 5.x で移った先のソケット名(名前が変わったもの)
+_SOCKET_ALIASES = {
+    "mode": ["Type"],       # SetAlpha
+    "space": ["Type"],      # Scale
+}
+
+
 def set_node_value(node, name: str, value) -> None:
     """ノードの設定値を、プロパティでもソケットでも受け付けて設定する。
 
@@ -192,8 +206,13 @@ def set_node_value(node, name: str, value) -> None:
     if hasattr(node, name):
         setattr(node, name, value)
         return
-    # 'contrast_limit' -> 'Contrast Limit' のようにソケット名へ寄せる
-    candidates = (name, name.replace("_", " ").title())
+    # 'contrast_limit' -> 'Contrast Limit' のようにソケット名へ寄せる。
+    # 5.x では SetAlpha.mode と Scale.space がどちらも「Type」という名前の
+    # ソケットになった。これを知らずに何も書かずに戻っていて、5.2 では
+    # SetAlpha が「Apply Mask」のまま動き、手描き背景の隙間埋めが色を
+    # 外へにじませて輪郭が二重になった(総当りで発見)
+    candidates = [name, name.replace("_", " ").title()]
+    candidates += _SOCKET_ALIASES.get(name, [])
     for cand in candidates:
         sock = node.inputs.get(cand)
         if sock is not None:
@@ -203,6 +222,10 @@ def set_node_value(node, name: str, value) -> None:
                 # 'REPLACE_ALPHA' のような識別子はメニュー表示名と異なる
                 sock.default_value = value.replace("_", " ").title()
             return
+    # どこにも書けなかったら黙って戻らない(今回の見逃しの原因)
+    import logging
+    logging.getLogger(__name__).warning(
+        f"set_node_value: {node.bl_idname} has no '{name}' (value {value!r} not set)")
 
 
 def file_output_set_dir(fo, path: str) -> None:

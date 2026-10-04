@@ -51,10 +51,15 @@ class LINK_MAKE_FP_OT_VCOLOR(bpy.types.Operator):
                     utils.set_active_vertex_color(o, name, idx)
 
                     # ビューポートを頂点カラー表示に
-                    area = context.area.spaces[0]
-                    area.shading.type       = 'SOLID'
-                    area.shading.light      = 'FLAT'
-                    area.shading.color_type = 'VERTEX'
+                    # 3D ビューから押されたときだけ表示を切り替える。3D ビューが
+                    # 無い所(検索メニューやスクリプト)から呼ぶと落ちていた
+                    area = context.area
+                    space = (area.spaces.active if area is not None
+                             and area.type == 'VIEW_3D' else None)
+                    if space is not None:
+                        space.shading.type       = 'SOLID'
+                        space.shading.light      = 'FLAT'
+                        space.shading.color_type = 'VERTEX'
                     break
 
         return {'FINISHED'}

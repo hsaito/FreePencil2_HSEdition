@@ -259,6 +259,230 @@ msgid "Ignore trailing digits even without dot"
 msgstr "Ignore trailing digits even without dot"
 
 msgctxt "*"
+msgid "Analyzing parts"
+msgstr "Analyzing parts"
+
+msgctxt "*"
+msgid "Assigning colors"
+msgstr "Assigning colors"
+
+msgctxt "*"
+msgid "Auto Setup"
+msgstr "Auto Setup"
+
+msgctxt "*"
+msgid "Auto Vertex Color (FreePencil)"
+msgstr "Auto Vertex Color (FreePencil)"
+
+msgctxt "*"
+msgid "Auto result: "
+msgstr "Auto result: "
+
+msgctxt "*"
+msgid "Character"
+msgstr "Character"
+
+msgctxt "*"
+msgid "Coloring adjacency graph"
+msgstr "Coloring adjacency graph"
+
+msgctxt "*"
+msgid "Crush relief"
+msgstr "Crush relief"
+
+msgctxt "*"
+msgid "Details"
+msgstr "Details"
+
+msgctxt "*"
+msgid "Detecting islands"
+msgstr "Detecting islands"
+
+msgctxt "*"
+msgid "F12 renders at 2x."
+msgstr "F12 renders at 2x."
+
+msgctxt "*"
+msgid "Fade fine stripes"
+msgstr "Fade fine stripes"
+
+msgctxt "*"
+msgid "Failed to load module."
+msgstr "Failed to load module."
+
+msgctxt "*"
+msgid "Far lines"
+msgstr "Far lines"
+
+msgctxt "*"
+msgid "Fill leaf gaps"
+msgstr "Fill leaf gaps"
+
+msgctxt "*"
+msgid "Fine lines"
+msgstr "Fine lines"
+
+msgctxt "*"
+msgid "Fine lines: run STEP0 with Background"
+msgstr "Fine lines: run STEP0 with Background"
+
+msgctxt "*"
+msgid "Finish"
+msgstr "Finish"
+
+msgctxt "*"
+msgid "Flat white under the lines. Pure line art"
+msgstr "Flat white under the lines. Pure line art"
+
+msgctxt "*"
+msgid "FreePencil"
+msgstr "FreePencil"
+
+msgctxt "*"
+msgid "FreePencil removed. The scene is back to before the first STEP"
+msgstr "FreePencil removed. The scene is back to before the first STEP"
+
+msgctxt "*"
+msgid "Grey shading from the diffuse light, with lines on top. Texture patterns are not carried over"
+msgstr "Grey shading from the diffuse light, with lines on top. Texture patterns are not carried over"
+
+msgctxt "*"
+msgid "Import Shader Group to Python"
+msgstr "Import Shader Group to Python"
+
+msgctxt "*"
+msgid "Info"
+msgstr "Info"
+
+msgctxt "*"
+msgid "Ink darkness"
+msgstr "Ink darkness"
+
+msgctxt "*"
+msgid "Line weight (cavities):"
+msgstr "Line weight (cavities):"
+
+msgctxt "*"
+msgid "Line weight from cavities"
+msgstr "Line weight from cavities"
+
+msgctxt "*"
+msgid "Materials"
+msgstr "Materials"
+
+msgctxt "*"
+msgid "Measure line weight thresholds"
+msgstr "Measure line weight thresholds"
+
+msgctxt "*"
+msgid "Measure thresholds (once per cut)"
+msgstr "Measure thresholds (once per cut)"
+
+msgctxt "*"
+msgid "Merge far islands (px)"
+msgstr "Merge far islands (px)"
+
+msgctxt "*"
+msgid "Merging small islands"
+msgstr "Merging small islands"
+
+msgctxt "*"
+msgid "Mono (diffuse light)"
+msgstr "Mono (diffuse light)"
+
+msgctxt "*"
+msgid "No mesh objects selected."
+msgstr "No mesh objects selected."
+
+msgctxt "*"
+msgid "No mesh objects were processed."
+msgstr "No mesh objects were processed."
+
+msgctxt "*"
+msgid "Paint as"
+msgstr "Paint as"
+
+msgctxt "*"
+msgid "Preparing"
+msgstr "Preparing"
+
+msgctxt "*"
+msgid "Press STEP3 after changing these"
+msgstr "Press STEP3 after changing these"
+
+msgctxt "*"
+msgid "Preview:"
+msgstr "Preview:"
+
+msgctxt "*"
+msgid "Randomize Seed"
+msgstr "Randomize Seed"
+
+msgctxt "*"
+msgid "Remove"
+msgstr "Remove"
+
+msgctxt "*"
+msgid "Remove FreePencil"
+msgstr "Remove FreePencil"
+
+msgctxt "*"
+msgid "Removed. Settings from before FreePencil were not recorded in this file, so these were left as they are: "
+msgstr "Removed. Settings from before FreePencil were not recorded in this file, so these were left as they are: "
+
+msgctxt "*"
+msgid "Run STEP3 first, and point the camera at the subject"
+msgstr "Run STEP3 first, and point the camera at the subject"
+
+msgctxt "*"
+msgid "STEP5 writes the final size."
+msgstr "STEP5 writes the final size."
+
+msgctxt "*"
+msgid "Shadow floor"
+msgstr "Shadow floor"
+
+msgctxt "*"
+msgid "Show the scene as it is, with lines on top"
+msgstr "Show the scene as it is, with lines on top"
+
+msgctxt "*"
+msgid "Soften edges"
+msgstr "Soften edges"
+
+msgctxt "*"
+msgid "Success"
+msgstr "Success"
+
+msgctxt "*"
+msgid "Vertex colors (including STEP4 paint), AOVs and the line-art compositor will be removed, and the render settings restored. Ctrl+Z undoes this"
+msgstr "Vertex colors (including STEP4 paint), AOVs and the line-art compositor will be removed, and the render settings restored. Ctrl+Z undoes this"
+
+msgctxt "*"
+msgid "Vertex colors applied successfully."
+msgstr "Vertex colors applied successfully."
+
+msgctxt "*"
+msgid "Weight strength"
+msgstr "Weight strength"
+
+msgctxt "*"
+msgid "White"
+msgstr "White"
+
+msgctxt "*"
+msgid "Writing vertex colors"
+msgstr "Writing vertex colors"
+
+msgctxt "*"
+msgid "freepencil2"
+msgstr "freepencil2"
+
+msgctxt "*"
+msgid "freepencil4"
+msgstr "freepencil4"
+
+msgctxt "*"
 msgid "Bone grouping"
 msgstr "Bone grouping"
 

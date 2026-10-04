@@ -307,6 +307,30 @@ msgctxt "*"
 msgid "Auto setup (STEP1-3)"
 msgstr "全自動セットアップ (STEP1〜3)"
 
+msgid "Remove FreePencil"
+msgstr "FreePencil を外す"
+
+msgid "Vertex colors (including STEP4 paint), AOVs and the line-art compositor will be removed, and the render settings restored. Ctrl+Z undoes this"
+msgstr "頂点カラー(STEP4 で塗った色も)・AOV・線画のコンポジタを消し、レンダー設定を元に戻します。Ctrl+Z で取り消せます"
+
+msgid "Remove"
+msgstr "外す"
+
+msgid "Remove the vertex colors, AOVs and compositor nodes FreePencil added, and restore the render settings and materials it changed (to before the first STEP). The shape of the meshes was never changed. Ctrl+Z undoes this"
+msgstr "FreePencil が足した頂点カラー・AOV・コンポジタのノードを消し、変えたレンダー設定と材質を最初の STEP の前に戻します。メッシュの形は変えていません。Ctrl+Z で取り消せます"
+
+msgid "Remove everything FreePencil added to this scene and restore the settings it changed"
+msgstr "このシーンに FreePencil が足したものを消し、変えた設定を戻します"
+
+msgid "FreePencil removed. The scene is back to before the first STEP"
+msgstr "FreePencil を外しました。最初の STEP の前の状態に戻っています"
+
+msgid "Removed. Settings from before FreePencil were not recorded in this file, so these were left as they are: "
+msgstr "外しました。このファイルには FreePencil を使う前の設定が控えられていないため、次の項目は今のままです: "
+
+msgid "view transform, transparent film, EEVEE AO, transparent material blend mode"
+msgstr "色の変換(Standard)、背景の透過、EEVEE の AO、透過材質の描画方法(HASHED)"
+
 msgctxt "*"
 msgid "Recommended settings for this scene"
 msgstr "シーンに合わせたおすすめ設定で実行"
@@ -402,6 +426,14 @@ msgstr "シーム/マテリアル境界で分割"
 msgctxt "*"
 msgid "Min island area %"
 msgstr "最小島面積 %"
+
+msgctxt "*"
+msgid "Ridge relief"
+msgstr "稜線の起伏"
+
+msgctxt "*"
+msgid "Ridge scale"
+msgstr "稜線の大きさ"
 
 msgctxt "*"
 msgid "Hard boundary bones"
@@ -515,3 +547,717 @@ msgstr "ファイル出力"
 msgctxt "*"
 msgid "Far crush relief"
 msgstr "遠景つぶれ軽減"
+
+msgctxt "*"
+msgid "Preview:"
+msgstr "プレビュー:"
+
+msgctxt "*"
+msgid "Materials"
+msgstr "マテリアルのまま"
+
+msgctxt "*"
+msgid "White"
+msgstr "白"
+
+msgctxt "*"
+msgid "Mono (diffuse light)"
+msgstr "モノクロ（ディフューズライト）"
+
+msgctxt "*"
+msgid "Show the scene as it is, with lines on top"
+msgstr "シーンをそのまま表示し、その上に線を乗せます"
+
+msgctxt "*"
+msgid "Flat white under the lines. Pure line art"
+msgstr "線の下を白一色にします。純粋な線画になります"
+
+msgctxt "*"
+msgid "Shadow floor"
+msgstr "影の下限"
+
+# --- v2.8: 線の強弱(くぼみ) ---
+
+msgctxt "*"
+msgid "Line weight (cavities):"
+msgstr "線の強弱(くぼみ):"
+
+msgctxt "*"
+msgid "Line weight from cavities"
+msgstr "くぼみで線に強弱をつける"
+
+msgctxt "*"
+msgid "Split less"
+msgstr "島を細かく切らない"
+
+msgctxt "*"
+msgid "Weaken the line"
+msgstr "線を弱める"
+
+msgctxt "*"
+msgid "Weight strength"
+msgstr "強弱の強さ"
+
+msgctxt "*"
+msgid "Cavity radius"
+msgstr "くぼみの半径"
+
+msgctxt "*"
+msgid "Cavity smoothing"
+msgstr "くぼみのなめらかさ"
+
+msgctxt "*"
+msgid "Weight binarize"
+msgstr "2値化のしきい値"
+
+msgctxt "*"
+msgid "Weight darkness"
+msgstr "濃さ"
+
+msgctxt "*"
+msgid "Weight tone"
+msgstr "濃さの強弱"
+
+msgctxt "*"
+msgid "Thick in cavities"
+msgstr "くぼみを太く(逆向き)"
+
+msgid "Thin far lines"
+msgstr "奥ほど細く"
+
+msgid "Fewer far lines"
+msgstr "奥ほど線を減らす"
+
+msgid "Lighten far lines"
+msgstr "奥ほど薄く"
+
+msgid "Far start"
+msgstr "奥の始まり"
+
+msgid "Far end"
+msgstr "奥の終わり"
+
+msgctxt "*"
+msgid "Keep crowded lines thin"
+msgstr "詰まった線は太らせない"
+
+msgctxt "*"
+msgid "Crowding radius"
+msgstr "詰まりを見る半径"
+
+msgctxt "*"
+msgid "Crowding threshold"
+msgstr "詰まりのしきい値"
+
+msgctxt "*"
+msgid "Measure thresholds (once per cut)"
+msgstr "しきい値を測る(カットに1回)"
+
+msgctxt "*"
+msgid "Run STEP0 again to apply (STEP3 is not enough)"
+msgstr "反映には STEP0 をやり直してください(STEP3 では足りません)"
+
+msgctxt "*"
+msgid "Run STEP3 first, and point the camera at the subject"
+msgstr "先に STEP3 を実行し、カメラを被写体に向けてください"
+
+msgctxt "*"
+msgid "Measure line weight thresholds"
+msgstr "線の強弱のしきい値を測る"
+
+msgctxt "*"
+msgid "F12 renders at 2x. STEP5 writes the final size"
+msgstr "F12 は2倍で出ます。STEP5 は最終サイズで書き出します"
+
+msgctxt "*"
+msgid "Finish"
+msgstr "仕上がり"
+
+msgctxt "*"
+msgid "What STEP0 aims for"
+msgstr "STEP0 が目指す仕上がり"
+
+msgctxt "*"
+msgid "Precise (mech)"
+msgstr "精密(メカ)"
+
+msgctxt "*"
+msgid "Uniform lines, every panel edge. Same output as v2.7"
+msgstr "線は均一、パネルの縁を全部拾う。v2.7 と同じ出力"
+
+msgctxt "*"
+msgid "Character (hand-drawn)"
+msgstr "キャラ(手描き)"
+
+msgctxt "*"
+msgid "Background (hand-drawn)"
+msgstr "手描き背景"
+
+msgctxt "*"
+msgid "Character plus special handling for sets: far lines get thin, fewer and lighter with distance, and foliage is painted in clumps instead of leaf by leaf"
+msgstr "キャラの中身に、セット向けの特殊処理を足す: 奥ほど線を細く・少なく・薄く、葉は1枚ずつでなく房にまとめて塗る"
+
+msgid "Ink darkness"
+msgstr "線の濃さ"
+
+msgid "Soften edges"
+msgstr "縁をやわらかく(px)"
+
+msgid "Foliage clumps"
+msgstr "葉を房に(個数)"
+
+msgid "Merge far islands (px)"
+msgstr "遠い区画をまとめる(px)"
+
+msgid "Islands that look smaller than this on screen (pixels of a 1920-wide picture, seen from the camera, nearest point of its animation) are painted together with the nearest bigger island, so far buildings keep their outline and big bands instead of a black block of windows. 0 = off. Needs STEP1 again"
+msgstr "画面上でこの大きさ(横 1920 の絵の画素、カメラから見て。カメラが動くなら一番近づく位置)より小さく写る区画を、近くの大きい区画と同じ色で塗ります。遠くのビルが窓の黒い塊にならず、輪郭と大きな帯で描かれます。0 = しない。STEP1 をやり直すと反映されます"
+
+msgid "Fill leaf gaps"
+msgstr "葉の隙間を埋める(px)"
+
+msgid "Fine lines"
+msgstr "細い線(メカの分割)"
+
+msgctxt "*"
+msgid "Line weight from cavities (AO): the outline is thick and lines thin as they enter a crease. Smooth surfaces are split less (14 deg floor, ridge 0.45) and the AO thresholds are measured for this shot"
+msgstr "くぼみ(AO)で線に強弱: 輪郭は太く、くぼみに入る線ほど細い。なめらかな面は細かく割らず(下限14度・稜線0.45)、AO のしきい値をこのカットで測る"
+
+msgctxt "*"
+msgid "Details"
+msgstr "詳細"
+
+msgctxt "*"
+msgid "Applied by STEP0 (STEP1):"
+msgstr "STEP0(STEP1)で反映:"
+
+msgctxt "*"
+msgid "F12 renders at 2x."
+msgstr "F12 は2倍の大きさで出ます。"
+
+msgctxt "*"
+msgid "STEP5 writes the final size."
+msgstr "STEP5 は最終サイズで書き出します。"
+
+msgctxt "*"
+msgid "Auto Setup"
+msgstr "全自動セットアップ"
+
+msgctxt "*"
+msgid "Analyze the scene, apply recommended settings and run STEP1 (vertex colors), STEP2 (AOV) and STEP3 (PRO node) at once"
+msgstr "シーンを調べておすすめの設定にし、STEP1(頂点カラー)・STEP2(AOV)・STEP3(プロノード)をまとめて実行します"
+
+msgctxt "*"
+msgid "Fill half by selected verts"
+msgstr "選択した頂点で半分を塗ります"
+
+msgctxt "*"
+msgid "Render once at low resolution and read the AO thresholds from this shot. Fixed per cut so the line does not flicker"
+msgstr "低解像度で1回レンダして、このカットのくぼみのしきい値を測ります。カットごとに固定するので線がちらつきません"
+
+msgctxt "*"
+msgid "Failed to load module."
+msgstr "モジュールを読み込めませんでした。"
+
+msgctxt "*"
+msgid "Auto Vertex Color (FreePencil)"
+msgstr "頂点カラーの自動塗り分け(FreePencil)"
+
+msgctxt "*"
+msgid "Automatically separate and paint vertex colors on selected mesh objects"
+msgstr "選択したメッシュの頂点カラーを自動で塗り分けます"
+
+msgctxt "*"
+msgid "Randomize Seed"
+msgstr "シードをランダムにする"
+
+msgctxt "*"
+msgid "Render each checked camera; File Output nodes write into //camera_renders/NN_<camera>/ per camera"
+msgstr "チェックしたカメラを順にレンダします。ファイル出力はカメラごとに //camera_renders/NN_<カメラ名>/ へ書き出します"
+
+msgctxt "*"
+msgid "No mesh objects selected."
+msgstr "メッシュが選択されていません。"
+
+msgctxt "*"
+msgid "Preparing"
+msgstr "準備中"
+
+msgctxt "*"
+msgid "Analyzing parts"
+msgstr "パーツを調べています"
+
+msgctxt "*"
+msgid "Detecting islands"
+msgstr "島を見つけています"
+
+msgctxt "*"
+msgid "Merging small islands"
+msgstr "小さな島をまとめています"
+
+msgctxt "*"
+msgid "Coloring adjacency graph"
+msgstr "隣り合う島の色を決めています"
+
+msgctxt "*"
+msgid "Assigning colors"
+msgstr "色を割り当てています"
+
+msgctxt "*"
+msgid "Writing vertex colors"
+msgstr "頂点カラーを書き込んでいます"
+
+msgctxt "*"
+msgid "Success"
+msgstr "完了"
+
+msgctxt "*"
+msgid "No mesh objects were processed."
+msgstr "処理したメッシュはありません。"
+
+msgctxt "*"
+msgid "Info"
+msgstr "情報"
+
+msgctxt "*"
+msgid "Vertex colors applied successfully."
+msgstr "頂点カラーを塗り分けました。"
+
+msgctxt "*"
+msgid "clear sharp"
+msgstr "シャープを削除"
+
+msgctxt "*"
+msgid "material ID"
+msgstr "マテリアルID"
+
+msgctxt "*"
+msgid "Artificial split floor"
+msgstr "人工分割の下限角度"
+
+msgctxt "*"
+msgid "Line sharp edges"
+msgstr "線を出す辺の角度"
+
+msgctxt "*"
+msgid "Auto blur on subdivided objects"
+msgstr "サブディビジョンの自動ぼかし"
+
+msgctxt "*"
+msgid "Curve blur"
+msgstr "曲面ぼかし"
+
+msgctxt "*"
+msgid "Curve blur angle"
+msgstr "曲面ぼかしの角度"
+
+msgctxt "*"
+msgid "Vertex color type"
+msgstr "頂点カラーのタイプ"
+
+msgctxt "*"
+msgid "Select node type"
+msgstr "ノードの種類"
+
+msgctxt "*"
+msgid "Relief radius"
+msgstr "軽減の見る範囲"
+
+msgctxt "*"
+msgid "Relief threshold"
+msgstr "軽減のしきい値"
+
+msgctxt "*"
+msgid "Measured line density"
+msgstr "測った線の密度"
+
+msgctxt "*"
+msgid "Preview"
+msgstr "プレビュー"
+
+msgctxt "*"
+msgid "Write line pass"
+msgstr "線を書き出す"
+
+msgctxt "*"
+msgid "Write color pass"
+msgstr "色を書き出す"
+
+msgctxt "*"
+msgid "Write light pass"
+msgstr "光を書き出す"
+
+msgctxt "*"
+msgid "Write shadow pass"
+msgstr "影を書き出す"
+
+msgctxt "*"
+msgid "File Output path"
+msgstr "ファイル出力先"
+
+msgctxt "*"
+msgid "generator color"
+msgstr "生成カラー"
+
+msgctxt "*"
+msgid "FreePencil"
+msgstr "FreePencil"
+
+msgctxt "*"
+msgid "Import Shader Group to Python"
+msgstr "シェーダーグループをPythonからインポート"
+
+msgctxt "*"
+msgid "freepencil2"
+msgstr "freepencil2"
+
+msgctxt "*"
+msgid "freepencil4"
+msgstr "freepencil4"
+
+msgctxt "*"
+msgid "mask color"
+msgstr "マスクカラー"
+
+msgctxt "*"
+msgid "line color"
+msgstr "線カラー"
+
+msgctxt "*"
+msgid "material color"
+msgstr "マテリアルカラー"
+
+msgctxt "*"
+msgid "bone color"
+msgstr "ボーンカラー"
+
+msgctxt "*"
+msgid "Color seed"
+msgstr "配色シード"
+
+msgctxt "*"
+msgid "Choose the sharp-edge angle automatically from the mesh's dihedral-angle distribution (per object)"
+msgstr "メッシュの面の角度の分布から、線を出す辺の角度をオブジェクトごとに自動で決めます"
+
+msgctxt "*"
+msgid "Lowest angle the auto threshold may pick for a model that has no structural edges at all. Too low and a smoothly curving surface gets cut across at an arbitrary place"
+msgstr "角の無いなめらかなモデルで、自動の角度がここより下がらないようにします。低すぎると曲面が変な所で切られます"
+
+msgctxt "*"
+msgid "Treat UV seams and material borders as island boundaries in addition to the edge angle"
+msgstr "辺の角度に加えて、UVシームとマテリアルの境目でも島を分けます"
+
+msgctxt "*"
+msgid "Merge islands smaller than this % of total mesh area into their largest neighbor (0 = off)"
+msgstr "メッシュ全体の面積に対してこの%より小さい島を、隣の一番大きい島にまとめます(0 = しない)"
+
+msgctxt "*"
+msgid "Add a faint normal-based relief inside each island so that smooth ridges (a brow, a fold) get a line. 0 = off"
+msgstr "島の中に法線の向きで薄い濃淡をつけ、なめらかな稜線(眉、服のしわ)にも線を出します。0 = しない"
+
+msgctxt "*"
+msgid "How far to look when deciding the 'overall direction' of a surface, as a fraction of the object size. Smaller = thinner lines on finer features"
+msgstr "面の「大まかな向き」を決めるときに見る範囲(オブジェクトの大きさに対する割合)。小さいほど細かい形に線が出ます"
+
+msgctxt "*"
+msgid "For objects that carry a Subdivision modifier, cut islands at a low angle and then dissolve every boundary that is not a sharp edge. The modelling cage stops showing up as lines while the real creases stay"
+msgstr "サブディビジョンが付いたオブジェクトは、低い角度で島を切ってからシャープ以外の境目を消します。モデリング用の網目は線にならず、本当の折り目は残ります"
+
+msgctxt "*"
+msgid "Smooth the paint color across low-angle edges so the mesh grid on subdivided surfaces stops turning into lines. Sharp edges keep their hard step (0 = off)"
+msgstr "角度の浅い辺をまたいで色をなめらかにし、細分化した面の網目が線にならないようにします。シャープな辺の段差は残します(0 = しない)"
+
+msgctxt "*"
+msgid "Only edges below this dihedral angle get smoothed. Edges above it keep a hard color step, so their lines stay"
+msgstr "この角度より浅い辺だけをなめらかにします。深い辺は色の段差が残るので線も残ります"
+
+msgctxt "*"
+msgid "Select vertex color type."
+msgstr "頂点カラーのタイプを選びます。"
+
+msgctxt "*"
+msgid "Thin out lines where they have merged into solid black (typically the far background of a large set). 0 = off, no change to the image"
+msgstr "線が黒くつぶれた所(広いセットの遠景など)を間引きます。0 = しない(絵は変わりません)"
+
+msgctxt "*"
+msgid "How far to look when measuring how crowded the lines are, in pixels. Larger = only wide black areas are thinned"
+msgstr "線の混み具合を測るときに見る範囲(ピクセル)。大きいほど広い黒だけを間引きます"
+
+msgctxt "*"
+msgid "How crowded an area must be before it is thinned. Lower = starts working on sparser lines"
+msgstr "どれだけ混んだら間引くか。低いほど少ない線から効き始めます"
+
+msgctxt "*"
+msgid "Scale the line-detection thresholds inside the node group. Lower = weaker edges also become solid lines (1.0 = raw node)"
+msgstr "ノードグループの中の線を出すしきい値を掛け算します。低いほど弱い境目も線になります(1.0 = ノードのまま)"
+
+msgctxt "*"
+msgid "Thicken the line where the shape is recessed and thin it where it is open, using the ambient-occlusion pass. Updates the drawing right away"
+msgstr "アンビエントオクルージョンを使い、くぼんだ所の線を太く、開いた所を細くします。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "While line weight is on, allow fewer islands so the mesh is cut more coarsely. A thin rim seen edge-on stops turning every mesh ring into its own line. 1.0 = do not change it"
+msgstr "線の強弱が有効な間は島を減らし、メッシュを粗く切ります。横から見た薄い縁で、網目の輪がそれぞれ線になるのを防ぎます。1.0 = 変えない"
+
+msgctxt "*"
+msgid "While line weight is on, raise the line-detection threshold by this factor so fewer, cleaner lines are thickened. 1.0 = do not change it"
+msgstr "線の強弱が有効な間は、線を出すしきい値をこの倍率で上げ、少なくきれいな線だけを太くします。1.0 = 変えない"
+
+msgctxt "*"
+msgid "Multiplier on the step widths. 1.0 = 12/8/5/3/2 px before the 50% shrink. Updates the drawing right away"
+msgstr "太さの段の幅にかける倍率。1.0 = 50%縮小前で 12/8/5/3/2 px。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "How dark a pixel must be to count as line before thickening. Lower = faint lines survive"
+msgstr "太らせる前に、どれだけ濃ければ線とみなすか。低いほど薄い線も残ります"
+
+msgctxt "*"
+msgid "Share of the silhouette covered by lines, read by the threshold measurement. Dense models get a lower maximum width automatically"
+msgstr "しきい値を測ったときに読んだ、シルエットの中で線が占める割合。線の多いモデルは最大の太さが自動で下がります"
+
+msgctxt "*"
+msgid "Shrink the line weight with distance so far objects keep the thin base line only. 0 = off"
+msgstr "遠いほど線の強弱を弱め、奥の物は細い基本線だけにします。0 = しない"
+
+msgctxt "*"
+msgid "Raise the line threshold with distance so weak lines drop out far away. 1 = off, 3 = far threshold x3"
+msgstr "遠いほど線のしきい値を上げ、奥の弱い線を減らします。1 = しない、3 = 奥でしきい値3倍"
+
+msgctxt "*"
+msgid "Fade far lines toward the paper, like aerial perspective. 0 = off"
+msgstr "空気遠近のように、奥の線を紙の色へ薄めます。0 = しない"
+
+msgctxt "*"
+msgid "Camera distance where the far treatment begins. Measured with the thresholds (5th percentile of line depth)"
+msgstr "奥の扱いが始まるカメラからの距離。しきい値と一緒に測ります(線の奥行きの5パーセンタイル)"
+
+msgctxt "*"
+msgid "Camera distance where the far treatment is full. Measured with the thresholds (95th percentile of line depth)"
+msgstr "奥の扱いが最大になるカメラからの距離。しきい値と一緒に測ります(線の奥行きの95パーセンタイル)"
+
+msgctxt "*"
+msgid "Also paint a second, finer split (the precise/mech one) and lay those lines over the drawing at this strength. 0 = off. Needs STEP0 again (it paints twice)"
+msgstr "精密(メカ)の細かい塗り分けももう1枚塗り、その線をこの濃さで重ねます。0 = しない。STEP0 をやり直すと反映されます(2回塗ります)"
+
+msgctxt "*"
+msgid "Paint small islands (leaf cards) in this many spatial clumps instead of one colour per leaf. 0 = off. Needs STEP1 again. Maple 4-8, palm 1"
+msgstr "小さな島(葉の板)を1枚ずつ塗らず、この数の房にまとめて塗ります。0 = しない。STEP1 をやり直すと反映されます。カエデは4〜8、ヤシは1"
+
+msgctxt "*"
+msgid "Fill holes narrower than this (pixels at 200%) before detecting lines, so sky seen between leaves does not outline every leaf. 0 = off. Needs STEP3 again"
+msgstr "線を出す前に、これより狭いすき間(200%でのピクセル)を埋めます。葉の間から見える空で葉が1枚ずつ縁取られるのを防ぎます。0 = しない。STEP3 をやり直すと反映されます"
+
+msgctxt "*"
+msgid "Off: open areas (the outline) are thick and lines thin as they enter a crease, like a pen drawing. On: the reverse"
+msgstr "オフ: ペン画のように、開いた所(輪郭)が太く、くぼみに入ると細くなります。オン: その逆"
+
+msgctxt "*"
+msgid "How dark the darkest line is, as seen on screen. 1 = black, 0.75 = dark grey. Updates the drawing right away"
+msgstr "一番濃い線の濃さ。1 = 黒、0.75 = 濃いグレー。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "Blur the line edges by this many pixels (at 200%) after anti-aliasing, before the 50% downscale. 0 = SMAA only"
+msgstr "アンチエイリアスのあと、50%縮小の前に、線の縁をこのピクセル数(200%で)ぼかします。0 = SMAA だけ"
+
+msgctxt "*"
+msgid "Also vary darkness by step: the thinnest step fades to grey while the thickest stays black. 0 = width only"
+msgstr "段ごとに濃さも変えます。一番細い段はグレーに、一番太い段は黒のまま。0 = 太さだけ"
+
+msgctxt "*"
+msgid "Lift the ink after the 50% shrink so the thin steps stay black"
+msgstr "50%縮小のあとで線を濃くし、細い段も黒く残します"
+
+msgctxt "*"
+msgid "Where lines are packed together, do not thicken them. A thin rim seen edge-on turns the mesh rings into several parallel lines that would otherwise merge into one blob. 0 = off"
+msgstr "線が詰まった所は太らせません。横から見た薄い縁は網目の輪が平行な線になり、太らせると1つの黒い塊になるためです。0 = しない"
+
+msgctxt "*"
+msgid "How far to look when deciding that lines are packed, in pixels of the render (before the 50% shrink)"
+msgstr "線が詰まっているかを決めるときに見る範囲(50%縮小前のピクセル)"
+
+msgctxt "*"
+msgid "How packed an area must be before it stops being thickened. Lower = starts working on sparser lines"
+msgstr "どれだけ詰まったら太らせるのをやめるか。低いほど少ない線から効き始めます"
+
+msgctxt "*"
+msgid "Blur the cavity map before it drives the width. EEVEE's AO is ray-traced and grainy; the grain turns a single stroke into a dashed line. Larger = smoother taper along a stroke"
+msgstr "太さを決める前にくぼみの画をぼかします。EEVEE の AO は粒が粗く、1本の線が破線になるためです。大きいほど線に沿った入り抜きがなめらかになります"
+
+msgctxt "*"
+msgid "How far to look when deciding how recessed a point is, as a fraction of the scene size. Not in scene units: an absolute value stops working as soon as the model is bigger or smaller"
+msgstr "どれだけくぼんでいるかを決めるときに見る範囲(シーンの大きさに対する割合)。絶対値にするとモデルの大きさが変わるだけで効かなくなるため、割合にしています"
+
+msgctxt "*"
+msgid "Step boundary on 1 - AO. Measure it per cut"
+msgstr "1 − AO の段の境目。カットごとに測ります"
+
+msgctxt "*"
+msgid "Render at 200% resolution and scale the compositor output back to 50%, turning 2px lines into crisp 1px lines. Applies to the Composite output and File Output slots"
+msgstr "200%の解像度でレンダし、コンポジットの出力を50%に戻して、2pxの線をくっきりした1pxにします。コンポジット出力とファイル出力に効きます"
+
+msgctxt "*"
+msgid "What to show under the lines. Both work the same way: they change what feeds the node group, so materials are never touched"
+msgstr "線の下に何を敷くか。どれもノードグループに入れる物を変えるだけで、マテリアルには触りません"
+
+msgctxt "*"
+msgid "Grey shading from the diffuse light, with lines on top. Texture patterns are not carried over"
+msgstr "拡散光のグレーの陰影に線を重ねます。テクスチャの模様は出ません"
+
+msgctxt "*"
+msgid "How dark the shadows may get in mono preview. 0 crushes them to black and the lines disappear"
+msgstr "モノクロプレビューで影をどこまで暗くするか。0 だと黒くつぶれて線が見えなくなります"
+
+msgctxt "*"
+msgid "Temporarily replace all materials with a flat white emission (AOV-enabled) to preview pure line art. Original materials are backed up per object and fully restored when turned off"
+msgstr "すべてのマテリアルを一時的に白い放射(AOV付き)に置き換え、線画だけを見ます。元のマテリアルはオブジェクトごとに保存し、オフにすると元に戻します"
+
+msgctxt "*"
+msgid "While white preview is on, leave real glass materials (Transmission / low Alpha) untouched so you can still see through windows"
+msgstr "白プレビューの間も本物のガラス(透過・低いアルファ)は置き換えず、窓の向こうが見えるようにします"
+
+msgctxt "*"
+msgid "Add a File Output node to the generated compositor tree that writes the selected passes as PNGs"
+msgstr "生成したコンポジットにファイル出力ノードを足し、選んだパスを PNG で書き出します"
+
+msgctxt "*"
+msgid "Write the line art to line.png"
+msgstr "線画を line.png に書き出します"
+
+msgctxt "*"
+msgid "Write the flat color output to color.png"
+msgstr "ベタの色を color.png に書き出します"
+
+msgctxt "*"
+msgid "Write the diffuse direct light pass to light.png. Easier to composite than the shadow pass"
+msgstr "拡散の直接光を light.png に書き出します。影のパスより合成しやすいです"
+
+msgctxt "*"
+msgid "Write the shadow pass to shadow.png. EEVEE's shadow pass is often noisy"
+msgstr "影のパスを shadow.png に書き出します。EEVEE の影のパスはノイズが出やすいです"
+
+msgctxt "*"
+msgid "Base path for the File Output node"
+msgstr "ファイル出力ノードの出力先"
+
+msgctxt "*"
+msgid "Insert Anti-Aliasing node before Composite"
+msgstr "コンポジットの前にアンチエイリアスノードを入れます"
+
+msgctxt "*"
+msgid "AOV Generator Color"
+msgstr "AOV 生成カラー"
+
+msgctxt "*"
+msgid "AOV Mask Color(White erases lines)"
+msgstr "AOV マスクカラー(白く塗った所の線が消えます)"
+
+msgctxt "*"
+msgid "AOV Line Color"
+msgstr "AOV 線カラー"
+
+msgctxt "*"
+msgid "Increasing the scale scatters island colors more randomly."
+msgstr "大きくするほど、島の色がばらけます。"
+
+msgctxt "*"
+msgid "Minimum RGB distance between neighboring islands (0–1.732). Lower values allow similar colors."
+msgstr "隣り合う島の色の最小RGB距離(0〜1.732)。低いほど似た色を許します。"
+
+msgctxt "*"
+msgid "How many times to retry when a color already exists"
+msgstr "同じ色がすでにあるとき、選び直す回数の上限"
+
+msgctxt "*"
+msgid "Generate a new random seed every run. Turn this off to reproduce exactly the same island colors."
+msgstr "実行のたびに新しいシードにします。オフにすると同じ塗り分けを再現できます。"
+
+msgctxt "*"
+msgid "Seed for island color generation. The same seed with the same mesh reproduces the same colors."
+msgstr "島の色を決めるシード。同じメッシュに同じシードなら同じ色になります。"
+
+msgctxt "*"
+msgid "Give touching parts (objects) different brightness bands in mecha_color so part boundaries (hairline, collar) become lines; bone_color stays a pure weight blend and the node composites both channels"
+msgstr "接しているパーツ(オブジェクト)ごとに mecha_color の明るさの帯を変え、パーツの境目(髪の生え際、襟)を線にします。bone_color はウェイトのなめらかな混色のままで、ノードが両方を合成します"
+
+msgctxt "*"
+msgid "Comma-separated bone names whose region boundary should be a hard step in bone_color (so a line appears there, e.g. 'head' for a chin line). Empty = all soft blending"
+msgstr "bone_color で境目をくっきり分けるボーン名(カンマ区切り)。そこに線が出ます(例: あごの線なら 'head')。空 = すべてなめらかに混ぜる"
+
+msgctxt "*"
+msgid "Color used by Half Fill"
+msgstr "半分塗りで使う色"
+
+msgctxt "*"
+msgid "Include this camera in FreePencil's 'Render checked cameras' batch"
+msgstr "FreePencil の「チェックしたカメラをレンダリング」にこのカメラを入れます"
+
+msgctxt "*"
+msgid "Fade dense lines"
+msgstr "詰まった線を薄く"
+
+msgctxt "*"
+msgid "Lighten lines where they are packed together on screen (shutters, railings, fire escapes), so dense detail reads as fine texture instead of a black blob. 0 = off. Updates the drawing right away"
+msgstr "画面上で線が詰まった所(シャッター、手すり、外階段)を薄くし、細かい物が黒い塊にならず細かな模様に見えるようにします。0 = しない。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "Fade fine stripes"
+msgstr "細かすぎる縞を薄く"
+
+msgctxt "*"
+msgid "Far away, blur rows of lines that are packed finer than the pixels (shutters, louvers, railings seen from a low angle) into a light haze, keeping floor bands and outlines. Only rows running one way are touched, not leaves. Stops the far end from crushing and flickering. 0 = off. Updates the drawing right away"
+msgstr "奥で画素より細かく並んだ線(低い視点から見たシャッター・ルーバー・手すり)をぼかして淡いもやにし、階の帯や輪郭は残します。向きのそろった縞だけに効き、木の葉は触りません。奥がつぶれたり、動かしたときにちらついたりするのを防ぎます。0 = しない。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "Paint as"
+msgstr "塗り方"
+
+msgctxt "*"
+msgid "How STEP1 paints this object in the hand-drawn finishes (Character / Background). Precise always splits by angle"
+msgstr "手描き系の仕上がり(キャラ・手描き背景)で、STEP1 がこのオブジェクトをどう塗るか。精密はいつも角度で分けます"
+
+msgctxt "*"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "*"
+msgid "Rigged objects are painted as characters, unless most vertices follow a single bone (a robot)"
+msgstr "リグ付きはキャラとして塗ります。ただし頂点の大半がボーン1本に固定されている物(ロボット)はメカとして塗ります"
+
+msgctxt "*"
+msgid "Split by edge angle and keep every panel line, even when rigged"
+msgstr "リグ付きでも角度で分け、パネルの線を全部出します"
+
+msgctxt "*"
+msgid "Character"
+msgstr "キャラ"
+
+msgctxt "*"
+msgid "Coarse paint: one color per part, joints blended by bone weights. Also works without a rig"
+msgstr "ざっくり塗り: パーツごとに1色、関節はボーンのウェイトでぼかします。リグが無くても使えます"
+
+msgctxt "*"
+msgid "Auto result: "
+msgstr "自動の判定: "
+
+msgctxt "*"
+msgid "Fine lines: run STEP0 with Background"
+msgstr "細い線: 仕上がり「手描き背景」で STEP0 を押すと使えます"
+
+msgctxt "*"
+msgid "Far lines"
+msgstr "奥の線を控えめに"
+
+msgctxt "*"
+msgid "How much to hold back far lines: thinner, fewer and lighter with distance. 1 = the Background default, 0 = off. Updates the drawing right away"
+msgstr "遠くの線をどれだけ控えるか。遠いほど細く・少なく・薄くします。1 = 手描き背景の既定、0 = しない。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "Crush relief"
+msgstr "つぶれ軽減"
+
+msgctxt "*"
+msgid "Keep packed detail from crushing into black: fade lines that are packed together (railings, shutters) and blur rows of stripes that get finer than the pixels far away. Outlines stay. 1 = the Background default, 0 = off. Updates the drawing right away"
+msgstr "細かい物が黒くつぶれないようにします。詰まった線（手すり・シャッター）を薄くし、奥で画素より細かくなった縞をぼかします。輪郭は残ります。1 = 手描き背景の既定、0 = しない。動かすとすぐ絵に反映されます"
+
+msgctxt "*"
+msgid "Press STEP3 after changing these"
+msgstr "変えたら STEP3 を押し直してください"

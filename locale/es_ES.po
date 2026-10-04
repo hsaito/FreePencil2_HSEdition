@@ -259,6 +259,230 @@ msgid "Ignore trailing digits even without dot"
 msgstr "Ignorar dígitos finales incluso sin punto"
 
 msgctxt "*"
+msgid "Analyzing parts"
+msgstr "Analizando piezas"
+
+msgctxt "*"
+msgid "Assigning colors"
+msgstr "Asignando colores"
+
+msgctxt "*"
+msgid "Auto Setup"
+msgstr "Configuración automática"
+
+msgctxt "*"
+msgid "Auto Vertex Color (FreePencil)"
+msgstr "Color automático de vértices (FreePencil)"
+
+msgctxt "*"
+msgid "Auto result: "
+msgstr "Resultado automático: "
+
+msgctxt "*"
+msgid "Character"
+msgstr "Personaje"
+
+msgctxt "*"
+msgid "Coloring adjacency graph"
+msgstr "Coloreando el grafo de adyacencia"
+
+msgctxt "*"
+msgid "Crush relief"
+msgstr "Aplastar relieves"
+
+msgctxt "*"
+msgid "Details"
+msgstr "Detalles"
+
+msgctxt "*"
+msgid "Detecting islands"
+msgstr "Detectando islas"
+
+msgctxt "*"
+msgid "F12 renders at 2x."
+msgstr "El render F12 usa 2x."
+
+msgctxt "*"
+msgid "Fade fine stripes"
+msgstr "Desvanecer franjas finas"
+
+msgctxt "*"
+msgid "Failed to load module."
+msgstr "No se pudo cargar el módulo."
+
+msgctxt "*"
+msgid "Far lines"
+msgstr "Líneas lejanas"
+
+msgctxt "*"
+msgid "Fill leaf gaps"
+msgstr "Rellenar huecos de hojas"
+
+msgctxt "*"
+msgid "Fine lines"
+msgstr "Líneas finas"
+
+msgctxt "*"
+msgid "Fine lines: run STEP0 with Background"
+msgstr "Líneas finas: ejecutar PASO0 con Fondo"
+
+msgctxt "*"
+msgid "Finish"
+msgstr "Finalizar"
+
+msgctxt "*"
+msgid "Flat white under the lines. Pure line art"
+msgstr "Blanco plano bajo las líneas. Arte de líneas puro"
+
+msgctxt "*"
+msgid "FreePencil"
+msgstr "FreePencil"
+
+msgctxt "*"
+msgid "FreePencil removed. The scene is back to before the first STEP"
+msgstr "FreePencil eliminado. La escena vuelve al estado anterior al primer PASO"
+
+msgctxt "*"
+msgid "Grey shading from the diffuse light, with lines on top. Texture patterns are not carried over"
+msgstr "Sombreado gris de la luz difusa, con líneas encima. Los patrones de textura no se conservan"
+
+msgctxt "*"
+msgid "Import Shader Group to Python"
+msgstr "Importar grupo de shader a Python"
+
+msgctxt "*"
+msgid "Info"
+msgstr "Información"
+
+msgctxt "*"
+msgid "Ink darkness"
+msgstr "Oscuridad de la tinta"
+
+msgctxt "*"
+msgid "Line weight (cavities):"
+msgstr "Grosor de línea (cavidades):"
+
+msgctxt "*"
+msgid "Line weight from cavities"
+msgstr "Grosor de línea a partir de cavidades"
+
+msgctxt "*"
+msgid "Materials"
+msgstr "Materiales"
+
+msgctxt "*"
+msgid "Measure line weight thresholds"
+msgstr "Medir umbrales de grosor de línea"
+
+msgctxt "*"
+msgid "Measure thresholds (once per cut)"
+msgstr "Medir umbrales (una vez por corte)"
+
+msgctxt "*"
+msgid "Merge far islands (px)"
+msgstr "Unir islas lejanas (px)"
+
+msgctxt "*"
+msgid "Merging small islands"
+msgstr "Uniendo islas pequeñas"
+
+msgctxt "*"
+msgid "Mono (diffuse light)"
+msgstr "Mono (luz difusa)"
+
+msgctxt "*"
+msgid "No mesh objects selected."
+msgstr "No se seleccionó ninguna malla."
+
+msgctxt "*"
+msgid "No mesh objects were processed."
+msgstr "No se procesó ninguna malla."
+
+msgctxt "*"
+msgid "Paint as"
+msgstr "Pintar como"
+
+msgctxt "*"
+msgid "Preparing"
+msgstr "Preparando"
+
+msgctxt "*"
+msgid "Press STEP3 after changing these"
+msgstr "Pulsa PASO3 después de cambiar estos"
+
+msgctxt "*"
+msgid "Preview:"
+msgstr "Vista previa:"
+
+msgctxt "*"
+msgid "Randomize Seed"
+msgstr "Aleatorizar semilla"
+
+msgctxt "*"
+msgid "Remove"
+msgstr "Eliminar"
+
+msgctxt "*"
+msgid "Remove FreePencil"
+msgstr "Eliminar FreePencil"
+
+msgctxt "*"
+msgid "Removed. Settings from before FreePencil were not recorded in this file, so these were left as they are: "
+msgstr "Eliminado. La configuración previa a FreePencil no se registró en este archivo, por lo que estas se dejaron como estaban: "
+
+msgctxt "*"
+msgid "Run STEP3 first, and point the camera at the subject"
+msgstr "Primero ejecuta PASO3 y apunta la cámara al sujeto"
+
+msgctxt "*"
+msgid "STEP5 writes the final size."
+msgstr "PASO5 escribe el tamaño final."
+
+msgctxt "*"
+msgid "Shadow floor"
+msgstr "Suelo en sombra"
+
+msgctxt "*"
+msgid "Show the scene as it is, with lines on top"
+msgstr "Mostrar la escena tal cual, con líneas encima"
+
+msgctxt "*"
+msgid "Soften edges"
+msgstr "Suavizar aristas"
+
+msgctxt "*"
+msgid "Success"
+msgstr "Correcto"
+
+msgctxt "*"
+msgid "Vertex colors (including STEP4 paint), AOVs and the line-art compositor will be removed, and the render settings restored. Ctrl+Z undoes this"
+msgstr "Se eliminarán los colores de vértice (incluido el pintado del PASO4), los AOV y el compositor de líneas, y se restaurarán los ajustes de render. Ctrl+Z lo deshace"
+
+msgctxt "*"
+msgid "Vertex colors applied successfully."
+msgstr "Los colores de vértice se aplicaron correctamente."
+
+msgctxt "*"
+msgid "Weight strength"
+msgstr "Fuerza del peso"
+
+msgctxt "*"
+msgid "White"
+msgstr "Blanco"
+
+msgctxt "*"
+msgid "Writing vertex colors"
+msgstr "Escribiendo colores de vértice"
+
+msgctxt "*"
+msgid "freepencil2"
+msgstr "freepencil2"
+
+msgctxt "*"
+msgid "freepencil4"
+msgstr "freepencil4"
+
+msgctxt "*"
 msgid "Bone grouping"
 msgstr "Agrupación de huesos"
 

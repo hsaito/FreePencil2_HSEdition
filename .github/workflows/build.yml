@@ -27,8 +27,10 @@ jobs:
       - name: マニフェストと bl_info の版が一致することを確認する
         run: |
           set -eu
-          man=$(sed -n 's/^version *= *"\(.*\)"/\1/p' blender_manifest.toml)
-          info=$(sed -n 's/.*"version": *(\([0-9]*\), *\([0-9]*\), *\([0-9]*\)).*/\1.\2.\3/p' __init__.py | head -1)
+          # リポジトリの一部は CRLF で入っている。sed は行末の \r を残すので、
+          # "2.8.0" と "2.8.0\r" を比べて落ちた(v2.8.0 のタグで実測)。\r を消す
+          man=$(sed -n 's/^version *= *"\(.*\)"/\1/p' blender_manifest.toml | tr -d '\r')
+          info=$(sed -n 's/.*"version": *(\([0-9]*\), *\([0-9]*\), *\([0-9]*\)).*/\1.\2.\3/p' __init__.py | head -1 | tr -d '\r')
           echo "manifest=$man  bl_info=$info"
           test "$man" = "$info"
 
@@ -37,7 +39,7 @@ jobs:
         run: |
           set -eu
           tag="${GITHUB_REF_NAME#v}"
-          man=$(sed -n 's/^version *= *"\(.*\)"/\1/p' blender_manifest.toml)
+          man=$(sed -n 's/^version *= *"\(.*\)"/\1/p' blender_manifest.toml | tr -d '\r')
           echo "tag=$tag  manifest=$man"
           test "$tag" = "$man"
 
