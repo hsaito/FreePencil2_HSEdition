@@ -899,6 +899,22 @@ msgid "generator color"
 msgstr "生成カラー"
 
 msgctxt "*"
+msgid "FreePencil"
+msgstr "FreePencil"
+
+msgctxt "*"
+msgid "Import Shader Group to Python"
+msgstr "シェーダーグループをPythonからインポート"
+
+msgctxt "*"
+msgid "freepencil2"
+msgstr "freepencil2"
+
+msgctxt "*"
+msgid "freepencil4"
+msgstr "freepencil4"
+
+msgctxt "*"
 msgid "mask color"
 msgstr "マスクカラー"
 
